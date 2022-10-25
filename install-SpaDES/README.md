@@ -13,7 +13,7 @@ action.
 
 Inputs available
 
-None at the moment.
+- `upgrade` - default `TRUE`. A boolean passed to `Require::Require(..., upgrade)`
 
 Basic:
 ```yaml
