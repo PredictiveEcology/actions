@@ -22,9 +22,9 @@ well in your workflow files if you need to.
 
 # List of actions
 
-1. [PredictiveEcology/actions/install-Require](https://github.com/PredictiveEcology/actions/tree/v2/install-Require) - Installs `Require` (and `remotes`)
-1. [PredictiveEcology/actions/install-Rmd-pkgs](https://github.com/PredictiveEcology/actions/tree/v2/install-Rmd-pkgs) - Installs packages commonly needed to render SpaDES modules .Rmds (i.e. module manuals)
-1. [PredictiveEcology/actions/install-SpaDES](https://github.com/PredictiveEcology/actions/tree/v2/install-SpaDES) - Installs SpaDES packages
+1. [PredictiveEcology/actions/install-Require](https://github.com/PredictiveEcology/actions/tree/v0/install-Require) - Installs `Require` (and `remotes`)
+1. [PredictiveEcology/actions/install-Rmd-pkgs](https://github.com/PredictiveEcology/actions/tree/v0/install-Rmd-pkgs) - Installs packages commonly needed to render SpaDES modules .Rmds (i.e. module manuals)
+1. [PredictiveEcology/actions/install-SpaDES](https://github.com/PredictiveEcology/actions/tree/v0/install-SpaDES) - Installs SpaDES packages
 
 # More information on GitHub Actions
 https://github.com/PredictiveEcology/actions/tree/v2
