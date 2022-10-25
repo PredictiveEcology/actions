@@ -27,4 +27,4 @@ well in your workflow files if you need to.
 1. [PredictiveEcology/actions/install-SpaDES](https://github.com/PredictiveEcology/actions/tree/v0/install-SpaDES) - Installs SpaDES packages
 
 # More information on GitHub Actions
-https://github.com/PredictiveEcology/actions/tree/v2
+https://github.com/r-lib/actions/tree/v2
