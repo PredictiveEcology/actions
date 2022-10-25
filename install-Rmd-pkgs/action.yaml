@@ -1,0 +1,20 @@
+name: 'install-Rmd-pkgs'
+description: 'Action to install packages necessary to render LandR module manuals (.Rmds)'
+author: 'Ceres Barros'
+inputs:
+  GitTag:
+    description: "A character indicating the branch, commit SHA or tag to append to 'PredictiveEcology/Require@'. Defaults to 'master' branch"
+    required: true
+    default: "master"
+runs:
+  using: "composite"
+  steps:
+      - name: Install packages to render module Rmds
+        run: |
+          Require::Require(c("bookdown", "rmarkdown", "knitr"),
+                           require = FALSE)
+          Require::Require(c("git2r", "kableExtra", "openxlsx", "pander"),
+                           require = FALSE)
+          Require::Require(c("PredictiveEcology/SpaDES.docs@development"),
+                           require = FALSE)
+        shell: Rscript {0}
