@@ -1,0 +1,22 @@
+name: 'install-SpaDES'
+description: 'Action to install SpaDES packages'
+author: 'Ceres Barros'
+inputs:
+  upgrade:
+    description: "A boolean passed to 'Require::Require(..., upgrade)'"
+    required: true
+    default: true
+runs:
+  using: "composite"
+  steps:
+      - name: Install SpaDES packages
+        run: |
+          cat("::group::Installing SpaDES metapackage \n")
+          options(repos = c(CRAN = "https://packagemanager.rstudio.com/all/__linux__/focal/latest", CRAN = "https://cran.rstudio.com"))
+          Require::Require("SpaDES", require = FALSE, upgrade = (${{ inputs.upgrade }}))
+          cat("::endgroup::\n")
+          cat("::group::Installing additional SpaDES packages from GitHub \n")
+          Require::Require("PredictiveEcology/SpaDES.experiment@development",
+            require = FALSE, upgrade = (${{ inputs.upgrade }}))
+          cat("::endgroup::\n")
+        shell: Rscript {0}
