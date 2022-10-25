@@ -11,10 +11,14 @@ runs:
   steps:
       - name: Install packages to render module Rmds
         run: |
+          cat("::group::Installing bookdown, markdown, knit \n")
           Require::Require(c("bookdown", "rmarkdown", "knitr"),
                            require = FALSE)
+          cat("::endgroup::\n")
+          cat("::group::Installing other LandR manual dependencies\n")
           Require::Require(c("git2r", "kableExtra", "openxlsx", "pander"),
                            require = FALSE)
           Require::Require(c("PredictiveEcology/SpaDES.docs@development"),
                            require = FALSE)
+          cat("::endgroup::\n")
         shell: Rscript {0}
