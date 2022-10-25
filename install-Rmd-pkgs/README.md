@@ -3,7 +3,7 @@
 This action installs packages that are usually necessary to render LandR module 
 manuals (.Rmds). 
 
-Some manual .Rmds may require aditional packages which 
+Some manual .Rmds may require additional packages which 
 will need to be installed separately, unless they become shared across many modules
 in which case they should be added to this action.
 
