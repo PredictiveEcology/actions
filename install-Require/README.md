@@ -15,6 +15,8 @@ steps:
 - uses: actions/checkout@v2
 - uses: r-lib/actions/setup-r@v2
 - uses: PredictiveEcology/actions/install-Require@v0
+  with:
+    GitTag: 'development'
 ```
 
 # License
