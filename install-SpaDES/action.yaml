@@ -12,6 +12,7 @@ runs:
       - name: Install SpaDES packages
         run: |
           cat("::group::Installing SpaDES metapackage \n")
+          Require::setLinuxBinaryRepo()
           options(repos = c(CRAN = "https://packagemanager.rstudio.com/all/__linux__/focal/latest", CRAN = "https://cran.rstudio.com"))
           Require::Require("SpaDES", require = FALSE, upgrade = as.logical("${{ inputs.upgrade }}"))
           cat("::endgroup::\n")
