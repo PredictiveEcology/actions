@@ -25,6 +25,8 @@ well in your workflow files if you need to.
 1. [PredictiveEcology/actions/install-Require](https://github.com/PredictiveEcology/actions/tree/v0/install-Require) - Installs `Require` (and `remotes`)
 1. [PredictiveEcology/actions/install-Rmd-pkgs](https://github.com/PredictiveEcology/actions/tree/v0/install-Rmd-pkgs) - Installs packages commonly needed to render SpaDES modules .Rmds (i.e. module manuals)
 1. [PredictiveEcology/actions/install-SpaDES](https://github.com/PredictiveEcology/actions/tree/v0/install-SpaDES) - Installs SpaDES packages
+1. [PredictiveEcology/actions/install-spatial-deps](https://github.com/PredictiveEcology/actions/tree/main/install-spatial-deps) - installs additional system dependencies for geospatial packages on Ubuntu Linux and macOS
 
 # More information on GitHub Actions
-https://github.com/r-lib/actions/tree/v2
+
+<https://github.com/r-lib/actions/tree/v2>
