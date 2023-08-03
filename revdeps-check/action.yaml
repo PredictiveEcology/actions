@@ -1,0 +1,49 @@
+## Workflow derived from https://github.com/r-lib/actions/tree/v2/examples and
+##   https://github.com/yihui/crandalf/blob/main/.github/workflows/rev-check.yaml
+##
+## Need help debugging build failures? Start at https://github.com/r-lib/actions#where-to-find-help
+name: 'revdeps-check'
+description: 'Action to run reverse dependency checks for R packages'
+author: 'Alex Chubaty'
+inputs:
+  quiet:
+    description: "Logical. Suppress output from internal processes?"
+    required: true
+    default: true
+  timeout:
+    description: "Integer. Maximum time to wait (in seconds) for R CMD check to complete."
+    required: true
+    default: 1800
+runs:
+  using: "composite"
+  steps:
+      - uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          extra-packages: |
+            any::Rcpp
+            r-lib/revdepcheck
+
+      - name: Check reverse dependencies
+        run: |
+          revdepcheck::revdep_check(
+            num_workers = getOption("Ncpus", 1),
+            quiet = as.logical("${{ inputs.quiet }}",
+            timeout = as.integer("${{ inputs.timeout }}"
+          )
+          revdep_report_cran()
+        shell: Rscript {0}
+
+      - name: Upload check results
+        uses: actions/upload-artifact@main
+        if: failure()
+        with:
+          name: ${{ runner.os }}-revdeps-check-results
+          if-no-files-found: ignore
+          path: |
+            00check_diffs.html
+            latex.txt
+            recheck
+            recheck2
+            *.Rcheck
+            *.Rcheck2
+
