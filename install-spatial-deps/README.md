@@ -8,7 +8,7 @@ Basic:
 
 ```yaml
 steps:
-- uses: actions/checkout@v2
+- uses: actions/checkout@v3
 - uses: PredictiveEcology/actions/install-spatial-deps@main
 - uses: r-lib/actions/setup-r@v2
 ```
