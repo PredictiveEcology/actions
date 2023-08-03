@@ -3,23 +3,13 @@
 Collection of GitHub Actions workflows used by the Predictive Ecology group to
 test packages, `SpaDES` modules, and render `SpaDES` module manuals.
 
-# News
-
-## `v0`
-
-- initial release;
-- added actions `install-Require`, `install-Rmd-pkgs` and `install-SpaDES`;
-
-## `v0.1`
-
-- minor tweaks to existing actions, including improved documentation;
-- added `install-spatial-deps` and `revdeps-check` actions;
-
 # Releases and tags
 
 We use major version tags to mark breaking changes in these actions.
 For the most recent current version use the `main` tag, although note that this is likely to change unexpectedly as we update this repo.
 We recommend using a fixed, stable version of the actions, either by specifying a version tag (e.g., `v0.1`) or, even better, by specifying a specific git commit sha.
+
+See [NEWS.md](https://github.com/PredictiveEcology/actions/blob/main/NEWS.md) for description of changes made at each version tag.
 
 # List of actions
 
