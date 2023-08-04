@@ -27,7 +27,7 @@ runs:
         run: |
           revdepcheck::revdep_check(
             num_workers = getOption("Ncpus", 1),
-            quiet = as.logical("${{ inputs.quiet }}",
+            quiet = as.logical("${{ inputs.quiet }}"),
             timeout = as.integer("${{ inputs.timeout }}")
           )
           revdep_report_cran()
