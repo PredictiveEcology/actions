@@ -30,7 +30,6 @@ runs:
             quiet = as.logical("${{ inputs.quiet }}"),
             timeout = as.integer("${{ inputs.timeout }}")
           )
-          revdep_report_cran()
         shell: Rscript {0}
 
       - name: Upload check results
