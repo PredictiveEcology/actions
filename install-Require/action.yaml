@@ -5,7 +5,7 @@ inputs:
   GitTag:
     description: "A character indicating the branch, commit SHA or tag to append to 'PredictiveEcology/Require@'. Defaults to 'master' branch"
     required: true
-    default: "development"
+    default: "master"
 runs:
   using: "composite"
   steps:
