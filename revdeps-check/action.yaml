@@ -33,7 +33,7 @@ runs:
         shell: Rscript {0}
 
       - name: Upload check results
-        uses: actions/upload-artifact@main
+        uses: actions/upload-artifact@v4
         if: failure()
         with:
           name: ${{ runner.os }}-revdeps-check-results

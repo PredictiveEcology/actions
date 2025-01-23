@@ -23,4 +23,5 @@ For details and example usage of each action, please see the corresponding actio
 
 # More information on GitHub Actions
 
-<https://github.com/r-lib/actions/tree/v2>
+<https://github.com/r-lib/actions>
+

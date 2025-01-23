@@ -22,8 +22,8 @@ Basic:
 steps:
 - uses: actions/checkout@v3
 - uses: r-lib/actions/setup-r@v2
-- uses: PredictiveEcology/actions/install-Require@v0
-- uses: PredictiveEcology/actions/install-Rmd-pkgs@v0
+- uses: PredictiveEcology/actions/install-Require@v0.2
+- uses: PredictiveEcology/actions/install-Rmd-pkgs@v0.2
 ```
 
 # License
