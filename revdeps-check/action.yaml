@@ -18,8 +18,8 @@ runs:
   using: "composite"
   steps:
       - name: Install additional package dependencies
+        ## install pkgs separately; keep this order to avoid conflicts
         run: |
-          ## install separately; keep this order to avoid conflicts
           pak::pkg_install("fs")
           pak::pkg_install("HenrikBengtsson/revdepcheck.extras")
           pak::pkg_install("r-lib/revdepcheck")
@@ -42,25 +42,70 @@ runs:
 
       - name: Populate the crancache
         id: crancache-populate
+        ## manual pre-installation uses crancache:
+        ##  - sequentially install deps of each revdeps package in parallel;
+        ##  - NOTE: PE pkgs aren't crancached, and will be installed each time.
         run: |
-          Rscript setup.R
-        shell: bash
+          options(revdepcheck.num_workers = getOption("Ncpus", 2L))
+
+          omit_pkgs <- c(
+            "SpaDES.project" ## omit b/c it circularly Suggests SpaDES.config
+          )
+          revdeps <- c(
+            revdepcheck.extras::revdep_children(),
+            revdepcheck.extras::revdep_grandchildren()
+          ) |>
+            setdiff(omit_pkgs)
+
+          crancache::update_packages(lib.loc = .libPaths()[1], ask = FALSE)
+          revdepcheck.extras::revdep_precache(pkgs = revdeps)
+
+          if (Sys.info()[["sysname"]] == "Darwin") {
+            fs::path("revdep", "library.noindex", revdeps) |> fs::dir_create()
+          } else {
+            fs::path("revdep", "library", revdeps) |> fs::dir_create()
+          }
+          lapply(revdeps, revdepcheck:::deps_install, pkgdir = ".")
+        shell: Rscript {0}
 
       - name: Check reverse dependencies
         id: revdeps-check
         run: |
-          echo "::group::Check reverse dependencies"
-          Rscript check.R
-          echo "::endgroup::"
-          echo "$(Rscript -e 'revdepcheck::revdep_report_summary()')" >> "$GITHUB_STEP_SUMMARY"
-        shell: bash
+          options(revdepcheck.num_workers = getOption("Ncpus", 2L))
+
+          omit_pkgs <- c(
+            "SpaDES.project" ## omit b/c it circularly Suggests SpaDES.config
+          )
+          revdeps <- c(
+            revdepcheck.extras::revdep_children(),
+            revdepcheck.extras::revdep_grandchildren()
+          ) |>
+            setdiff(omit_pkgs)
+
+          ## setup revdeps checks
+          revdepcheck.extras::revdep_init()
+          revdepcheck::revdep_add(packages = revdeps)
+
+          ## run revdeps checks
+          revdepcheck::revdep_check(
+            num_workers = getOption("revdepcheck.num_workers", 2L),
+            quiet = as.logical("${{ inputs.quiet }}"),
+            timeout = as.difftime("${{ inputs.timeout }}", units = "mins")
+          )
+
+          ## save revdeps check reports
+          revdepcheck::revdep_report(all = TRUE)
+        shell: Rscript {0}
 
       - name: Report issues with reverse dependencies
         id: revdeps-report
         run: |
+          echo "$(Rscript -e 'revdepcheck::revdep_report_summary()')" >> "$GITHUB_STEP_SUMMARY"
+
           echo "::group::Reverse dependency failures"
           echo "$(cat revdep/failures.md)"
           echo "::endgroup::"
+
           echo "::group::Reverse dependency problems"
           echo "$(cat revdep/problems.md)"
           echo "::endgroup::"
