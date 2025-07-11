@@ -99,7 +99,7 @@ runs:
 
           ## run revdeps checks
           revdepcheck::revdep_check(
-            num_workers = getOption("revdepcheck.num_workers", 2L),
+            num_workers = 1L,
             quiet = as.logical("${{ inputs.quiet }}"),
             timeout = as.difftime("${{ inputs.timeout }}", units = "mins")
           )
