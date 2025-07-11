@@ -31,6 +31,7 @@ runs:
         run: |
           echo "R_CRANCACHE=$(Rscript -e 'cat(crancache::get_cache_dir())')" >> "$GITHUB_OUTPUT"
           echo "R_VERSION=$(Rscript -e 'cat(as.character(getRversion()))')" >> "$GITHUB_OUTPUT"
+        shell: bash
 
       - name: Restore the crancache
         id: crancache-restore
@@ -43,6 +44,7 @@ runs:
         id: crancache-populate
         run: |
           Rscript setup.R
+        shell: bash
 
       - name: Check reverse dependencies
         id: revdeps-check
@@ -51,6 +53,7 @@ runs:
           Rscript check.R
           echo "::endgroup::"
           echo "$(Rscript -e 'revdepcheck::revdep_report_summary()')" >> "$GITHUB_STEP_SUMMARY"
+        shell: bash
 
       - name: Report issues with reverse dependencies
         id: revdeps-report
@@ -61,6 +64,7 @@ runs:
           echo "::group::Reverse dependency problems"
           echo "$(cat revdep/problems.md)"
           echo "::endgroup::"
+        shell: bash
 
       - name: Upload check results
         uses: actions/upload-artifact@v4
