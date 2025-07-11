@@ -43,9 +43,12 @@ runs:
       - name: Populate the crancache
         id: crancache-populate
         ## manual pre-installation uses crancache:
-        ##  - sequentially install deps of each revdeps package in parallel;
-        ##  - NOTE: PE pkgs aren't crancached, and will be installed each time.
+        ## 1. update all packages in the crancache to their latest versions;
+        ## 2. ensure dependency packages for revdeps are installed and cached;
+        ## 3. sequentially installs deps of each revdeps package in parallel
+        ##    (NOTE: PE pkgs aren't crancached, and will be installed each time);
         run: |
+          ## populate the crancache
           options(revdepcheck.num_workers = getOption("Ncpus", 2L))
 
           omit_pkgs <- c(
@@ -57,14 +60,20 @@ runs:
           ) |>
             setdiff(omit_pkgs)
 
+          ## update packages in the crancache
           crancache::update_packages(lib.loc = .libPaths()[1], ask = FALSE)
+
+          ## pre-populate the crancache (no-install)
           revdepcheck.extras::revdep_precache(pkgs = revdeps)
 
+          ## create revdep/library paths
           if (Sys.info()[["sysname"]] == "Darwin") {
             fs::path("revdep", "library.noindex", revdeps) |> fs::dir_create()
           } else {
             fs::path("revdep", "library", revdeps) |> fs::dir_create()
           }
+
+          ## install revdeps package dependencies
           lapply(revdeps, revdepcheck:::deps_install, pkgdir = ".")
         shell: Rscript {0}
 
