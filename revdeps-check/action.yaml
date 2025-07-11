@@ -52,7 +52,10 @@ runs:
           ## sequentially install deps of each revdeps package in parallel;
           ## NOTE: PE pkgs aren't crancached, and will be installed each time.
           fs::path("revdep", "library", revdeps) |> fs::dir_create()
-          lapply(revdeps, revdepcheck:::deps_install, pkgdir = ".")
+          if (Sys.info()[["sysname"]] != "Darwin") {
+            ## skip on macos because of sporadic 'library.noindex/' path
+            lapply(revdeps, revdepcheck:::deps_install, pkgdir = ".")
+          }
 
           ## setup and run the checks
           revdepcheck.extras::revdep_init()
