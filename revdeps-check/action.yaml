@@ -17,14 +17,14 @@ inputs:
 runs:
   using: "composite"
   steps:
-      - uses: r-lib/actions/setup-r-dependencies@v2
-        with:
-          extra-packages: |
-            any::fs
-            any::Rcpp
-            achubaty/crancache@r-universe
-            r-lib/revdepcheck
-            HenrikBengtsson/revdepcheck.extras
+      - name: Install additional package dependencies
+        run: |
+          ## install separately; keep this order to avoid conflicts
+          pak::pkg_install("fs")
+          pak::pkg_install("HenrikBengtsson/revdepcheck.extras")
+          pak::pkg_install("r-lib/revdepcheck")
+          pak::pkg_install("achubaty/crancache@r-universe")
+        shell: Rscript {0}
 
       - name: Check reverse dependencies
         run: |
