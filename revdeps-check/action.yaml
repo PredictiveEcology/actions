@@ -79,7 +79,7 @@ runs:
             fs::path("revdep", "library", revdeps) |> fs::dir_create()
           }
           lapply(revdeps, function(revdep) {
-            cat(sprintf("::group::Install dependencies of revdep package %s\n"), revdep)
+            cat(sprintf("::group::Install dependencies of revdep package %s\n", revdep))
             try(revdepcheck:::deps_install(revdep, pkgdir = "."))
             cat("::endgroup::\n")
           })
