@@ -31,10 +31,10 @@ runs:
       - name: Record crancache info
         id: crancache-info
         run: |
-          cat("::group::Record crancache info\n")
+          echo "::group::Record crancache info"
           echo "R_CRANCACHE=$(Rscript -e 'cat(crancache::get_cache_dir())')" >> "$GITHUB_OUTPUT"
           echo "R_VERSION=$(Rscript -e 'cat(as.character(getRversion()))')" >> "$GITHUB_OUTPUT"
-          cat("::endgroup::\n")
+          echo "::endgroup::"
         shell: bash
 
       - name: Restore the crancache
