@@ -7,7 +7,7 @@ This action runs reverse dependency checks for R packages.
 Inputs available
 
 - `quiet` - default `true`. Logical. Suppress output from internal processes?
-- `timeout` - default `1800`. Integer. Maximum time to wait (in seconds) for R CMD check to complete.
+- `timeout` - default `30`. Integer. Maximum time to wait (in minutes) for R CMD check to complete per revdep.
 
 ```yaml
 steps:
@@ -22,7 +22,7 @@ steps:
   - uses: PredictiveEcology/actions/revdeps-check@main
     with:
       quiet: true
-      timeout: 1800
+      timeout: 30
 ```
 
 # License
