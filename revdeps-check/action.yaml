@@ -74,7 +74,7 @@ runs:
           }
 
           ## install revdeps package dependencies
-          lapply(revdeps, revdepcheck:::deps_install, pkgdir = ".")
+          try(lapply(revdeps, revdepcheck:::deps_install, pkgdir = "."))
         shell: Rscript {0}
 
       - name: Check reverse dependencies
