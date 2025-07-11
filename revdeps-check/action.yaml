@@ -73,14 +73,16 @@ runs:
           revdepcheck.extras::revdep_precache(pkgs = revdeps)
           cat("::endgroup::\n")
 
-          cat("::group::Install revdeps packages' dependencies\n")
           if (Sys.info()[["sysname"]] == "Darwin") {
             fs::path("revdep", "library.noindex", revdeps) |> fs::dir_create()
           } else {
             fs::path("revdep", "library", revdeps) |> fs::dir_create()
           }
-          try(lapply(revdeps, revdepcheck:::deps_install, pkgdir = "."))
-          cat("::endgroup::\n")
+          lapply(revdeps, function(revdep) {
+            cat(sprintf("::group::Install dependencies of revdep package %s\n"), revdep)
+            try(revdepcheck:::deps_install(revdep, pkgdir = "."))
+            cat("::endgroup::\n")
+          })
         shell: Rscript {0}
 
       - name: Check reverse dependencies
