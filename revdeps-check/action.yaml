@@ -20,19 +20,21 @@ runs:
       - name: Install additional package dependencies
         ## install pkgs separately; keep this order to avoid conflicts
         run: |
-          ## install 'revdepchecks' and related packages
+          cat("::group::Install 'revdepchecks' and related packages\n")
           pak::pkg_install("fs")
           pak::pkg_install("HenrikBengtsson/revdepcheck.extras")
           pak::pkg_install("r-lib/revdepcheck")
           pak::pkg_install("achubaty/crancache@r-universe")
+          cat("::endgroup::\n")
         shell: Rscript {0}
 
       - name: Record crancache info
         id: crancache-info
         run: |
-          ## record crancache info
+          cat("::group::Record crancache info\n")
           echo "R_CRANCACHE=$(Rscript -e 'cat(crancache::get_cache_dir())')" >> "$GITHUB_OUTPUT"
           echo "R_VERSION=$(Rscript -e 'cat(as.character(getRversion()))')" >> "$GITHUB_OUTPUT"
+          cat("::endgroup::\n")
         shell: bash
 
       - name: Restore the crancache
@@ -50,8 +52,8 @@ runs:
         ## 3. sequentially installs deps of each revdeps package in parallel
         ##    (NOTE: PE pkgs aren't crancached, and will be installed each time);
         run: |
-          ## populate the crancache
-          options(revdepcheck.num_workers = getOption("Ncpus", 2L))
+          cat("::group::Identify revdeps\n")
+          options(revdepcheck.num_workers = getOption("Ncpus", 4L))
 
           omit_pkgs <- c(
             "SpaDES.project" ## omit b/c it circularly Suggests SpaDES.config
@@ -61,28 +63,31 @@ runs:
             revdepcheck.extras::revdep_grandchildren()
           ) |>
             setdiff(omit_pkgs)
+          cat("::endgroup::\n")
 
-          ## update packages in the crancache
+          cat("::group::Update packages in the crancache\n")
           crancache::update_packages(lib.loc = .libPaths()[1], ask = FALSE)
+          cat("::endgroup::\n")
 
-          ## pre-populate the crancache (no-install)
+          cat("::group::Pre-populate the crancache (no-install)\n")
           revdepcheck.extras::revdep_precache(pkgs = revdeps)
+          cat("::endgroup::\n")
 
-          ## create revdep/library paths
+          cat("::group::Install revdeps packages' dependencies\n")
           if (Sys.info()[["sysname"]] == "Darwin") {
             fs::path("revdep", "library.noindex", revdeps) |> fs::dir_create()
           } else {
             fs::path("revdep", "library", revdeps) |> fs::dir_create()
           }
-
-          ## install revdeps package dependencies
           try(lapply(revdeps, revdepcheck:::deps_install, pkgdir = "."))
+          cat("::endgroup::\n")
         shell: Rscript {0}
 
       - name: Check reverse dependencies
         id: revdeps-check
         run: |
-          options(revdepcheck.num_workers = getOption("Ncpus", 2L))
+          cat("::group::Identify revdeps\n")
+          options(revdepcheck.num_workers = getOption("Ncpus", 4L))
 
           omit_pkgs <- c(
             "SpaDES.project" ## omit b/c it circularly Suggests SpaDES.config
@@ -92,20 +97,24 @@ runs:
             revdepcheck.extras::revdep_grandchildren()
           ) |>
             setdiff(omit_pkgs)
+          cat("::endgroup::\n")
 
-          ## setup revdeps checks
+          cat("::group::Setup revdeps checks\n")
           revdepcheck.extras::revdep_init()
           revdepcheck::revdep_add(packages = revdeps)
+          cat("::endgroup::\n")
 
-          ## run revdeps checks
+          cat("::group::Run revdeps checks\n")
           revdepcheck::revdep_check(
-            num_workers = 1L,
+            num_workers = 4L,
             quiet = as.logical("${{ inputs.quiet }}"),
             timeout = as.difftime("${{ inputs.timeout }}", units = "mins")
           )
+          cat("::endgroup::\n")
 
-          ## save revdeps check reports
+          cat("::group::Save revdeps check reports\n")
           revdepcheck::revdep_report(all = TRUE)
+          cat("::endgroup::\n")
         shell: Rscript {0}
 
       - name: Report issues with reverse dependencies
