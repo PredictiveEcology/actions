@@ -20,6 +20,7 @@ runs:
       - name: Install additional package dependencies
         ## install pkgs separately; keep this order to avoid conflicts
         run: |
+          ## install 'revdepchecks' and related packages
           pak::pkg_install("fs")
           pak::pkg_install("HenrikBengtsson/revdepcheck.extras")
           pak::pkg_install("r-lib/revdepcheck")
@@ -29,6 +30,7 @@ runs:
       - name: Record crancache info
         id: crancache-info
         run: |
+          ## record crancache info
           echo "R_CRANCACHE=$(Rscript -e 'cat(crancache::get_cache_dir())')" >> "$GITHUB_OUTPUT"
           echo "R_VERSION=$(Rscript -e 'cat(as.character(getRversion()))')" >> "$GITHUB_OUTPUT"
         shell: bash
