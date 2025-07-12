@@ -20,6 +20,7 @@ runs:
       - name: Install additional package dependencies
         ## install pkgs separately; keep this order to avoid conflicts
         run: |
+          ## Install additional package dependencies
           cat("::group::Install 'revdepchecks' and related packages\n")
           pak::pkg_install("fs")
           pak::pkg_install("HenrikBengtsson/revdepcheck.extras")
@@ -31,6 +32,7 @@ runs:
       - name: Record crancache info
         id: crancache-info
         run: |
+          ## Record crancache info
           echo "::group::Record crancache info"
           echo "R_CRANCACHE=$(Rscript -e 'cat(crancache::get_cache_dir())')" >> "$GITHUB_OUTPUT"
           echo "R_VERSION=$(Rscript -e 'cat(as.character(getRversion()))')" >> "$GITHUB_OUTPUT"
@@ -52,6 +54,7 @@ runs:
         ## 3. sequentially installs deps of each revdeps package in parallel
         ##    (NOTE: PE pkgs aren't crancached, and will be installed each time);
         run: |
+          ## Populate the crancache
           cat("::group::Identify revdeps\n")
           options(revdepcheck.num_workers = getOption("Ncpus", 4L))
 
@@ -63,6 +66,7 @@ runs:
             revdepcheck.extras::revdep_grandchildren()
           ) |>
             setdiff(omit_pkgs)
+          print(revdeps)
           cat("::endgroup::\n")
 
           cat("::group::Update packages in the crancache\n")
@@ -82,12 +86,15 @@ runs:
             cat(sprintf("::group::Install dependencies of revdep package %s\n", revdep))
             try(revdepcheck:::deps_install(revdep, pkgdir = "."))
             cat("::endgroup::\n")
-          })
+          }) |>
+            unlist() |>
+            invisible()
         shell: Rscript {0}
 
       - name: Check reverse dependencies
         id: revdeps-check
         run: |
+          ## Check reverse dependencies
           cat("::group::Identify revdeps\n")
           options(revdepcheck.num_workers = getOption("Ncpus", 4L))
 
@@ -99,6 +106,7 @@ runs:
             revdepcheck.extras::revdep_grandchildren()
           ) |>
             setdiff(omit_pkgs)
+          print(revdeps)
           cat("::endgroup::\n")
 
           cat("::group::Setup revdeps checks\n")
