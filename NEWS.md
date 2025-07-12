@@ -2,6 +2,7 @@
 
 - added package caching to `revdeps-check` action;
 - improved reporting in `revdeps-check` action;
+- allow `revdeps-check` to check CRAN packages only;
 
 # PredictiveEcology/actions (v0.3)
 

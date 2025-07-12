@@ -6,6 +6,10 @@ name: 'revdeps-check'
 description: 'Action to run reverse dependency checks for R packages'
 author: 'Alex Chubaty'
 inputs:
+  cranonly:
+    description: "Logical. Limit checks to published CRAN packages only?"
+    required: true
+    default: true
   quiet:
     description: "Logical. Suppress output from internal processes?"
     required: true
@@ -22,7 +26,7 @@ runs:
         run: |
           ## Install additional package dependencies
           cat("::group::Install 'revdepchecks' and related packages\n")
-          pak::pkg_install("fs")
+          pak::pkg_install(c("fs", "rprojroot"))
           pak::pkg_install("HenrikBengtsson/revdepcheck.extras")
           pak::pkg_install("r-lib/revdepcheck")
           pak::pkg_install("achubaty/crancache@r-universe")
@@ -44,7 +48,7 @@ runs:
         uses: actions/cache/restore@v4
         with:
           path: ${{ steps.crancache-info.outputs.R_CRANCACHE }}
-          key: ${{ runner.os }}-R${{ steps.crancache-info.outputs.R_VERSION }}-crancache
+          key: ${{ runner.os }}-R-${{ steps.crancache-info.outputs.R_VERSION }}-cranonly-${{ inputs.cranonly }}
 
       - name: Populate the crancache
         id: crancache-populate
@@ -58,14 +62,22 @@ runs:
           cat("::group::Identify revdeps\n")
           options(revdepcheck.num_workers = getOption("Ncpus", 4L))
 
-          omit_pkgs <- c(
-            "SpaDES.project" ## omit b/c it circularly Suggests SpaDES.config
-          )
-          revdeps <- c(
-            revdepcheck.extras::revdep_children(),
-            revdepcheck.extras::revdep_grandchildren()
-          ) |>
-            setdiff(omit_pkgs)
+          if (isTRUE("${{ inputs.cranonly }}")) {
+            revdeps <- rprojroot::find_package_root_file() |>
+              fs::path_file() |>
+              tools::package_dependencies(which = "most", recursive = FALSE, reverse = TRUE) |>
+              unlist() |>
+              unname()
+          } else {
+            omit_pkgs <- c(
+              "SpaDES.project" ## omit b/c it circularly Suggests SpaDES.config
+            )
+            revdeps <- c(
+              revdepcheck.extras::revdep_children(),
+              revdepcheck.extras::revdep_grandchildren()
+            ) |>
+              setdiff(omit_pkgs)
+          }
           print(revdeps)
           cat("::endgroup::\n")
 
