@@ -3,6 +3,8 @@
 This action runs reverse dependency checks for R packages.
 Checks can be run for CRAN dependencies only, or can also include additional repositories, such as `r-universe`.
 
+**NOTE:** these are too resource intensive for standard GitHub runners!
+
 # Usage
 
 Inputs available
