@@ -57,7 +57,9 @@ jobs:
         with:
           extra-repositories: 'https://PredictiveEcology.r-universe.dev/'
           Ncpus: 2
-          use-public-rspm: false
+          # Match R-CMD-check / pkgdown: RSPM noble binaries are built against
+          # stock libgdal34 (matches the apt step); r-universe terra is libgdal37.
+          use-public-rspm: true
 
       - uses: r-lib/actions/setup-r-dependencies@v2
         with:

@@ -58,7 +58,10 @@ jobs:
         with:
           extra-repositories: 'https://PredictiveEcology.r-universe.dev/'
           Ncpus: 2
-          use-public-rspm: false
+          # Posit's noble binaries are built against stock libgdal34 (matches the
+          # apt step). r-universe terra is built against libgdal37 and won't load
+          # here -- so prefer RSPM, same as R-CMD-check.
+          use-public-rspm: true
 
       - uses: r-lib/actions/setup-r-dependencies@v2
         with:
