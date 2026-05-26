@@ -26,6 +26,10 @@ on:
         description: "Optional Rscript run after dependency install (e.g. NLMR/fastshp)."
         type: string
         default: ""
+      error-on:
+        description: "R expression passed to check-r-package's error-on (e.g. '\"warning\"', '\"error\"'). Defaults to \"warning\" (check-r-package's own default)."
+        type: string
+        default: '"warning"'
 
 jobs:
   R-CMD-check:
@@ -146,3 +150,4 @@ jobs:
       - uses: r-lib/actions/check-r-package@v2
         with:
           upload-snapshots: true
+          error-on: ${{ inputs.error-on }}
