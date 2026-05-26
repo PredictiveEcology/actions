@@ -78,5 +78,39 @@ jobs:
         shell: Rscript {0}
 
       - name: Test coverage
-        run: covr::codecov(quiet = FALSE)
+        # Wraps covr::merge_coverage.character to skip unreadable per-test trace
+        # files (zero-byte or truncated RDS) instead of aborting with the cryptic
+        # `Error in readRDS(f) : error reading from connection`. Root cause: a
+        # test that spawns a subprocess (e.g. callr::r_bg) sometimes leaves a
+        # child alive that the session can't terminate ("Error while shutting
+        # down parallel: unable to terminate some child processes"); that
+        # orphan's covr trace file is created but never flushed. Skipping it
+        # loses only the orphan's coverage and lets the rest report normally.
+        # The skip is logged with the file path and size so a real corruption
+        # (vs. a benign orphan) is still visible.
+        run: |
+          ns <- asNamespace("covr")
+          orig <- get("merge_coverage.character", envir = ns, inherits = FALSE)
+          wrapped <- function(x, ...) {
+            readable <- vapply(x, function(f) {
+              if (!file.exists(f) || !isTRUE(file.size(f) > 0)) return(FALSE)
+              isTRUE(tryCatch({ readRDS(f); TRUE }, error = function(e) FALSE))
+            }, logical(1))
+            skipped <- x[!readable]
+            if (length(skipped)) {
+              message("test-coverage: skipping ", length(skipped),
+                      " unreadable covr trace file(s) (likely from a child ",
+                      "process that didn't flush; see workflow comment):")
+              for (f in skipped) {
+                sz <- if (file.exists(f)) file.size(f) else NA_integer_
+                message(sprintf("  [%s bytes] %s", format(sz), f))
+              }
+            }
+            orig(x[readable], ...)
+          }
+          unlockBinding("merge_coverage.character", ns)
+          assign("merge_coverage.character", wrapped, envir = ns)
+          lockBinding("merge_coverage.character", ns)
+
+          covr::codecov(quiet = FALSE)
         shell: Rscript {0}
