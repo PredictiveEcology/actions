@@ -30,6 +30,10 @@ on:
         description: "R expression passed to check-r-package's error-on (e.g. '\"warning\"', '\"error\"'). Defaults to \"warning\" (check-r-package's own default)."
         type: string
         default: '"warning"'
+      dependencies:
+        description: "R expression for setup-r-dependencies' `dependencies` input. Use NA when transitive Suggests resolution conflicts (then add the needed Suggests directly via extra-packages)."
+        type: string
+        default: '"all"'
 
 jobs:
   R-CMD-check:
@@ -120,6 +124,7 @@ jobs:
         with:
           # Pin pak to its stable channel; devel occasionally regresses.
           pak-version: stable
+          dependencies: ${{ inputs.dependencies }}
           extra-packages: |
             any::rcmdcheck
             ${{ inputs.extra-packages }}

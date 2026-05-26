@@ -26,6 +26,10 @@ on:
         description: "Optional Rscript run after dependency install (e.g. NLMR/fastshp)."
         type: string
         default: ""
+      dependencies:
+        description: "R expression for setup-r-dependencies' `dependencies` input. Use NA when transitive Suggests resolution conflicts (then add the needed Suggests directly via extra-packages)."
+        type: string
+        default: '"all"'
 
 jobs:
   test-coverage:
@@ -63,6 +67,7 @@ jobs:
 
       - uses: r-lib/actions/setup-r-dependencies@v2
         with:
+          dependencies: ${{ inputs.dependencies }}
           extra-packages: |
             any::covr
             ${{ inputs.extra-packages }}
