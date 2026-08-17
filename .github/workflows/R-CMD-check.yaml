@@ -34,6 +34,10 @@ on:
         description: "R expression for setup-r-dependencies' `dependencies` input. Use NA when transitive Suggests resolution conflicts (then add the needed Suggests directly via extra-packages)."
         type: string
         default: '"all"'
+      check-args:
+        description: "R expression passed to check-r-package's `args` (the R CMD check flags). Defaults to c(\"--no-manual\", \"--as-cran\"). Set e.g. c(\"--no-manual\", \"--as-cran\", \"--run-dontrun\", \"--run-donttest\") to also run \\dontrun/\\donttest examples (as CRAN does)."
+        type: string
+        default: 'c("--no-manual", "--as-cran")'
 
 jobs:
   R-CMD-check:
@@ -156,3 +160,4 @@ jobs:
         with:
           upload-snapshots: true
           error-on: ${{ inputs.error-on }}
+          args: ${{ inputs.check-args }}
