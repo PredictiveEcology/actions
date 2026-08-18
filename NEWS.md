@@ -1,5 +1,7 @@
 # PredictiveEcology/actions (v0.4)
 
+- `R-CMD-check` reusable workflow now rebuilds from source any installed package that links `RcppParallel` but fails to load, so an `RcppParallel` TBB ABI change (e.g. 6.0.0's move to oneTBB) does not break every downstream package's CI while repositories catch up;
+
 - added package caching to `revdeps-check` action;
 - improved reporting in `revdeps-check` action;
 - allow `revdeps-check` to check CRAN packages only;

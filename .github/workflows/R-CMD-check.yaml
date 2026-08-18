@@ -162,6 +162,46 @@ jobs:
         run: ${{ inputs.post-install }}
         shell: Rscript {0}
 
+      # RcppParallel bundles TBB and its ABI is a property of the RcppParallel
+      # build, not the toolchain. When RcppParallel changes that ABI, every
+      # package linking it must be rebuilt -- 6.0.0 (2026-07-23) moved to
+      # oneTBB 2022.0.0 and its NEWS says as much. Repositories that have not
+      # yet rebuilt still serve binaries against the old ABI; those install
+      # without complaint and only fail at `dlopen`, e.g. on macOS-arm64:
+      #   qs2.so:        missing tbb::task::note_affinity
+      #   stringfish.so: missing tbb::internal::concurrent_vector_base_v3::internal_grow_by
+      # When such a package is in Imports, this kills `R CMD build` at the
+      # install-to-build-vignettes stage, before any check output exists.
+      #
+      # Probe rather than pin a version: we cannot know which release fixes a
+      # given mismatch, but we can ask whether it loads. No-op once the binaries
+      # are healthy, so this needs no maintenance and costs nothing when unused.
+      # RcppParallel itself is excluded -- building it from source needs cmake.
+      - name: Rebuild RcppParallel-linked packages that fail to load
+        shell: Rscript {0}
+        run: |
+          ip <- installed.packages()
+          links <- vapply(rownames(ip), function(p)
+            any(grepl("\\bRcppParallel\\b", ip[p, c("Depends", "Imports", "LinkingTo")])),
+            logical(1))
+          cands <- setdiff(rownames(ip)[links], "RcppParallel")
+          loads <- function(p) requireNamespace(p, quietly = TRUE)
+          broken <- Filter(Negate(loads), cands)
+          if (length(broken)) {
+            message("These link RcppParallel ", packageVersion("RcppParallel"),
+                    " but fail to load; rebuilding from source: ",
+                    paste(broken, collapse = ", "))
+            # dependencies first, so e.g. stringfish is rebuilt before qs2 --
+            # rebuilding a package against a still-broken dependency just fails again
+            deps <- tools::package_dependencies(broken, db = ip, recursive = TRUE)
+            nDeps <- vapply(broken, function(p) sum(broken %in% deps[[p]]), integer(1))
+            for (p in broken[order(nDeps)]) install.packages(p, type = "source")
+            stillBroken <- Filter(Negate(loads), broken)
+            if (length(stillBroken))
+              stop("still failing to load after a source rebuild: ",
+                   paste(stillBroken, collapse = ", "))
+          }
+
       - uses: r-lib/actions/check-r-package@v2
         with:
           upload-snapshots: true
