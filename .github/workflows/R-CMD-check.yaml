@@ -38,6 +38,10 @@ on:
         description: "R expression passed to check-r-package's `args` (the R CMD check flags). Defaults to c(\"--no-manual\", \"--as-cran\"). Set e.g. c(\"--no-manual\", \"--as-cran\", \"--run-dontrun\", \"--run-donttest\") to also run \\dontrun/\\donttest examples (as CRAN does)."
         type: string
         default: 'c("--no-manual", "--as-cran")'
+      extra-config:
+        description: "Extra matrix legs appended via `include` (JSON array of {config:{...}} objects). Default none. E.g. '[{\"config\":{\"os\":\"windows-latest\",\"nosuggests\":false,\"r\":\"oldrel-2\"}}]' to also test an older R."
+        type: string
+        default: "[]"
 
 jobs:
   R-CMD-check:
@@ -57,6 +61,8 @@ jobs:
           - {os: ubuntu-latest,   nosuggests: false, r: 'release'}
           - {os: ubuntu-latest,   nosuggests: true,  r: 'release'}
           - {os: ubuntu-latest,   nosuggests: false, r: 'oldrel-1'}
+        # Optional caller-supplied extra legs (default none). See extra-config input.
+        include: ${{ fromJSON(inputs.extra-config) }}
 
     env:
       _R_CHECK_DEPENDS_ONLY_: ${{ matrix.config.nosuggests }}
