@@ -92,13 +92,21 @@ jobs:
       # quickPlot loads (and fails the whole check via SpaDES.core lazy-load).
       - name: Install geospatial system dependencies (Linux)
         if: runner.os == 'Linux'
-        # Fail fast instead of hanging for hours: without
-        # DEBIAN_FRONTEND=noninteractive / NEEDRESTART_MODE=a, apt's post-install
-        # needrestart/debconf can block on an interactive prompt (a known
-        # Ubuntu 24.04 CI hang). Pass them through `sudo` (which otherwise resets
-        # the environment) and cap the step with a timeout as a backstop.
+        # Two independent Ubuntu-24.04 CI hangs are guarded here:
+        #  (1) apt's post-install needrestart/debconf can block on an interactive
+        #      prompt -> DEBIAN_FRONTEND=noninteractive / NEEDRESTART_MODE=a
+        #      (passed through `sudo`, which otherwise resets the environment).
+        #  (2) GitHub's azure.archive.ubuntu.com mirror intermittently returns
+        #      Ign and apt fails over to archive.ubuntu.com, but with no
+        #      per-connection timeout a stalled fetch hangs until this step's
+        #      timeout fires (observed: apt got InRelease then sat idle ~14.5
+        #      min). Short acquire timeouts + retries make a dead connection
+        #      abort in ~30s and fail over instead of hanging.
+        # timeout-minutes is only a last-resort backstop, not the primary guard.
         timeout-minutes: 15
         run: |
+          printf 'Acquire::Retries "5";\nAcquire::http::Timeout "30";\nAcquire::https::Timeout "30";\n' \
+            | sudo tee /etc/apt/apt.conf.d/99-ci-timeouts > /dev/null
           sudo DEBIAN_FRONTEND=noninteractive apt-get update -y
           sudo DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a apt-get install -y \
             libudunits2-dev libgdal-dev libgeos-dev libproj-dev libsqlite3-dev

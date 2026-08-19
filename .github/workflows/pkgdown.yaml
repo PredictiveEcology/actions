@@ -47,10 +47,17 @@ jobs:
       # used by install-spatial-deps installs libgdal37, which is ABI-incompatible
       # with the binaries in Posit's noble cache and breaks geospatial loads.
       - name: Install spatial deps (Linux, stock Noble)
+        # Short acquire timeouts + retries so a stalled GitHub apt mirror
+        # (azure.archive.ubuntu.com intermittently goes Ign) aborts in ~30s and
+        # fails over instead of hanging the step. See R-CMD-check.yaml for the
+        # observed failure.
+        timeout-minutes: 15
         run: |
-          sudo apt-get update -y
-          sudo apt-get install -f -y || true
-          sudo apt-get install -y --fix-missing \
+          printf 'Acquire::Retries "5";\nAcquire::http::Timeout "30";\nAcquire::https::Timeout "30";\n' \
+            | sudo tee /etc/apt/apt.conf.d/99-ci-timeouts > /dev/null
+          sudo DEBIAN_FRONTEND=noninteractive apt-get update -y
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -f -y || true
+          sudo DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a apt-get install -y --fix-missing \
             libudunits2-dev libgdal-dev libgeos-dev libproj-dev libsqlite3-dev
         shell: bash
 
