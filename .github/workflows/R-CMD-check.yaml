@@ -8,8 +8,13 @@
 #     pull_request: { branches: [main, master, development] }
 #   jobs:
 #     R-CMD-check:
-#       uses: PredictiveEcology/actions/.github/workflows/R-CMD-check.yaml@v0
-#       secrets: inherit
+#       uses: PredictiveEcology/actions/.github/workflows/R-CMD-check.yaml@v0.4
+#       ## Name the secrets you pass. `secrets: inherit` also works, but hands
+#       ## this workflow EVERY secret the calling repo can see -- including to
+#       ## the third-party packages that `post-install` installs. Omit the block
+#       ## entirely if the package has no Google Drive-backed tests.
+#       secrets:
+#         GOOGLEDRIVE_AUTH: ${{ secrets.GOOGLEDRIVE_AUTH }}
 #       with:
 #         extra-packages: |
 #           PredictiveEcology/Require@development
@@ -43,6 +48,14 @@ on:
         type: string
         default: "[]"
 
+    secrets:
+      GOOGLEDRIVE_AUTH:
+        description: >-
+          Google Drive service-account key. Base64-encoded is preferred (a
+          multi-line raw value is dropped by Windows runners); raw JSON is
+          also accepted. Optional -- Drive-backed tests skip without it.
+        required: false
+
 jobs:
   R-CMD-check:
     runs-on: ${{ matrix.config.os }}
@@ -67,11 +80,10 @@ jobs:
     env:
       _R_CHECK_DEPENDS_ONLY_: ${{ matrix.config.nosuggests }}
       GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
-      GOOGLEDRIVE_AUTH: ${{ secrets.GOOGLEDRIVE_AUTH }}
       R_REMOTES_NO_ERRORS_FROM_WARNINGS: true
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       # setup-pandoc occasionally fails with HTTP 5xx (CDN blip).
       # Three attempts with continue-on-error ride out transient failures.
@@ -156,7 +168,7 @@ jobs:
 
       # Fallback when setup-r-dependencies fails (most often a transient
       # binary-fetch failure under pak). Up to 3 attempts with 60s backoff.
-      # `nick-fields/retry@v3` does not accept `shell: Rscript {0}`, so we
+      # `nick-fields/retry@v4` does not accept `shell: Rscript {0}`, so we
       # invoke Rscript -e from bash.
       - name: Install R deps (retry fallback)
         if: steps.deps.outcome == 'failure'
@@ -217,7 +229,59 @@ jobs:
                    paste(stillBroken, collapse = ", "))
           }
 
+      # Google Drive service-account credentials, staged as late as possible.
+      # Every step above installs code (pak, the retry fallback, and whatever
+      # `post-install` fetches from GitHub), and none of it needs this
+      # credential -- so it is deliberately NOT a job-level `env:`. Only
+      # check-r-package below receives it, via a step-level `env:`.
+      #
+      # The secret reaches this script through the step `env:` rather than
+      # `${{ }}` interpolation, so it is never pasted into the shell source.
+      # Only the resulting PATH is handed onward: a multi-line value in `env:`
+      # arrives EMPTY on Windows runners (LandR 947b5fc1 -- PowerShell cannot
+      # set env vars containing newlines), so a base64-encoded secret is the
+      # reliable form. Both are accepted: a value whose first non-space
+      # character is `{` is treated as raw JSON, anything else as base64.
+      #
+      # `_PRESENT` is a single-line boolean that always survives the env
+      # boundary. It is what separates "no secret configured" (quiet, and
+      # normal on fork PRs, where GitHub withholds secrets) from "secret
+      # configured but dropped in transit" (warned) -- previously both looked
+      # identical and Drive-backed tests just skipped in silence.
+      - name: Stage Google service-account credentials
+        id: gdrive-auth
+        shell: bash
+        env:
+          GOOGLEDRIVE_AUTH_SECRET: ${{ secrets.GOOGLEDRIVE_AUTH }}
+          GOOGLEDRIVE_AUTH_PRESENT: ${{ secrets.GOOGLEDRIVE_AUTH != '' }}
+        run: |
+          set -euo pipefail
+          if [ -z "${GOOGLEDRIVE_AUTH_SECRET:-}" ]; then
+            if [ "${GOOGLEDRIVE_AUTH_PRESENT}" = "true" ]; then
+              echo "::warning title=Google Drive auth unavailable::GOOGLEDRIVE_AUTH is configured for this repository but arrived empty on ${RUNNER_OS}. Multi-line secrets do not survive the env: boundary on Windows runners -- re-store the secret base64-encoded. Drive-backed tests will SKIP."
+            else
+              echo "GOOGLEDRIVE_AUTH not configured; Drive-backed tests will skip."
+            fi
+            exit 0
+          fi
+          f="${RUNNER_TEMP}/google-sa.json"
+          case "$(printf '%s' "${GOOGLEDRIVE_AUTH_SECRET}" | head -c 64 | tr -d '[:space:]')" in
+            \{*) printf '%s' "${GOOGLEDRIVE_AUTH_SECRET}" > "$f" ;;
+            *)   printf '%s' "${GOOGLEDRIVE_AUTH_SECRET}" | base64 -d > "$f" 2>/dev/null || : ;;
+          esac
+          if ! grep -q '"service_account"' "$f" 2>/dev/null; then
+            rm -f "$f"
+            echo "::warning title=Google Drive auth unusable::GOOGLEDRIVE_AUTH did not decode to service-account JSON (expected base64 of, or literal, a service-account key file). Drive-backed tests will SKIP."
+            exit 0
+          fi
+          echo "path=$f" >> "$GITHUB_OUTPUT"
+          echo "Staged service-account JSON ($(wc -c < "$f") bytes) at $f"
+
       - uses: r-lib/actions/check-r-package@v2
+        env:
+          # Empty when nothing was staged -> the R side sees an unset var and
+          # skips, exactly as it does locally.
+          GOOGLEDRIVE_AUTH: ${{ steps.gdrive-auth.outputs.path }}
         with:
           upload-snapshots: true
           error-on: ${{ inputs.error-on }}
