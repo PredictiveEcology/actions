@@ -8,8 +8,12 @@
 #     pull_request: { branches: [main, development] }
 #   jobs:
 #     test-coverage:
-#       uses: PredictiveEcology/actions/.github/workflows/test-coverage.yaml@v0
-#       secrets: inherit
+#       uses: PredictiveEcology/actions/.github/workflows/test-coverage.yaml@v0.4
+#       ## Name the secrets you pass rather than using `secrets: inherit`.
+#       ## Both are optional; drop either line if unused.
+#       secrets:
+#         GOOGLEDRIVE_AUTH: ${{ secrets.GOOGLEDRIVE_AUTH }}
+#         CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 #       with:
 #         extra-packages: |
 #           PredictiveEcology/Require@development
@@ -31,18 +35,27 @@ on:
         type: string
         default: '"all"'
 
+    secrets:
+      GOOGLEDRIVE_AUTH:
+        description: >-
+          Google Drive service-account key. Base64-encoded is preferred; raw
+          JSON is also accepted. Optional -- Drive-backed tests skip without it.
+        required: false
+      CODECOV_TOKEN:
+        description: "Codecov upload token. Optional for public repos."
+        required: false
+
 jobs:
   test-coverage:
     runs-on: ubuntu-latest
     env:
       GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
-      GOOGLEDRIVE_AUTH: ${{ secrets.GOOGLEDRIVE_AUTH }}
       CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
       USING_COVR: true
       NOT_CRAN: "true"
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - uses: r-lib/actions/setup-pandoc@v2
 
@@ -77,7 +90,45 @@ jobs:
         run: ${{ inputs.post-install }}
         shell: Rscript {0}
 
+      # Google Drive service-account credentials. Staged after the install
+      # steps and handed only to the "Test coverage" step below, so the
+      # credential is never in the environment of a step that installs
+      # third-party code. Accepts base64 (preferred) or raw JSON, and warns
+      # rather than silently skipping when the secret is set but unusable.
+      # See R-CMD-check.yaml for the full rationale.
+      - name: Stage Google service-account credentials
+        id: gdrive-auth
+        shell: bash
+        env:
+          GOOGLEDRIVE_AUTH_SECRET: ${{ secrets.GOOGLEDRIVE_AUTH }}
+          GOOGLEDRIVE_AUTH_PRESENT: ${{ secrets.GOOGLEDRIVE_AUTH != '' }}
+        run: |
+          set -euo pipefail
+          if [ -z "${GOOGLEDRIVE_AUTH_SECRET:-}" ]; then
+            if [ "${GOOGLEDRIVE_AUTH_PRESENT}" = "true" ]; then
+              echo "::warning title=Google Drive auth unavailable::GOOGLEDRIVE_AUTH is configured for this repository but arrived empty. Drive-backed tests will SKIP."
+            else
+              echo "GOOGLEDRIVE_AUTH not configured; Drive-backed tests will skip."
+            fi
+            exit 0
+          fi
+          f="${RUNNER_TEMP}/google-sa.json"
+          case "$(printf '%s' "${GOOGLEDRIVE_AUTH_SECRET}" | head -c 64 | tr -d '[:space:]')" in
+            \{*) printf '%s' "${GOOGLEDRIVE_AUTH_SECRET}" > "$f" ;;
+            *)   printf '%s' "${GOOGLEDRIVE_AUTH_SECRET}" | base64 -d > "$f" 2>/dev/null || : ;;
+          esac
+          if ! grep -q '"service_account"' "$f" 2>/dev/null; then
+            rm -f "$f"
+            echo "::warning title=Google Drive auth unusable::GOOGLEDRIVE_AUTH did not decode to service-account JSON. Drive-backed tests will SKIP."
+            exit 0
+          fi
+          echo "path=$f" >> "$GITHUB_OUTPUT"
+          echo "Staged service-account JSON ($(wc -c < "$f") bytes) at $f"
+
       - name: Test coverage
+        env:
+          # Empty when nothing was staged -> the R side skips, as it does locally.
+          GOOGLEDRIVE_AUTH: ${{ steps.gdrive-auth.outputs.path }}
         # Wraps covr::merge_coverage.character to skip unreadable per-test trace
         # files (zero-byte or truncated RDS) instead of aborting with the cryptic
         # `Error in readRDS(f) : error reading from connection`. Root cause: a
