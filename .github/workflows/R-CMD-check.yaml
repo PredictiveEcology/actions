@@ -47,6 +47,10 @@ on:
         description: "Extra matrix legs appended via `include` (JSON array of {config:{...}} objects). Default none. E.g. '[{\"config\":{\"os\":\"windows-latest\",\"nosuggests\":false,\"r\":\"oldrel-2\"}}]' to also test an older R."
         type: string
         default: "[]"
+      build-args:
+        description: "R expression passed to check-r-package's `build_args` (the R CMD build flags). Defaults to c(\"--no-manual\", \"--compact-vignettes=gs+qpdf\") so PDF vignettes are compacted for all packages (smaller installed size, avoids CRAN NOTEs; a no-op when there are no PDF vignettes). Override to change."
+        type: string
+        default: 'c("--no-manual", "--compact-vignettes=gs+qpdf")'
 
     secrets:
       GOOGLEDRIVE_AUTH:
@@ -286,3 +290,4 @@ jobs:
           upload-snapshots: true
           error-on: ${{ inputs.error-on }}
           args: ${{ inputs.check-args }}
+          build_args: ${{ inputs.build-args }}
