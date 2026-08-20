@@ -31,7 +31,7 @@ runs:
           }
           retry 5m  "sudo -E add-apt-repository -y ppa:ubuntugis/ubuntugis-unstable"
           retry 5m  "sudo -E apt-get update -y"
-          retry 10m "sudo -E apt-get install -y \
+          retry 10m "sudo -E apt-get install -y --no-install-recommends \
                        libudunits2-dev libgdal-dev libgeos-dev libproj-dev libsqlite3-dev"
         shell: bash
       - name: Install geospatial system dependencies (macOS)
