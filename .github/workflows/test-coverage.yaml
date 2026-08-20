@@ -165,6 +165,55 @@ jobs:
           echo "token-path=$f" >> "$GITHUB_OUTPUT"
           echo "Staged Drive user OAuth token ($(wc -c < "$f") bytes) at $f"
 
+      # Report, IN THE WORKFLOW LOG, whether the staged credential actually
+      # works and which identity it is.
+      #
+      # This cannot be left to the test suite. Drive tests skip when auth is
+      # unavailable, so a broken credential and an absent one look identical --
+      # and under covr it is worse: covr neither fails the build on a test
+      # failure nor prints a skip summary, so even a test written to fail loudly
+      # is silent here. A service-account key authenticated fine for months while
+      # being unable to upload (service accounts have no Drive quota on
+      # user-owned folders); the only symptom was a coverage number that quietly
+      # stayed flat, and diagnosing it took repeated 25-minute round-trips.
+      #
+      # Staging already proves the secret decoded. This proves it AUTHENTICATES,
+      # by making one real API call -- drive_has_token() is not enough, since it
+      # is TRUE for a scope-limited token that 403s on first use and for one
+      # whose refresh is broken.
+      #
+      # Never fails the build: it is a diagnostic, and a repo with no Drive
+      # credential is a normal, supported configuration.
+      - name: Verify Google Drive credential
+        if: steps.gdrive-auth.outputs.token-path != '' || steps.gdrive-auth.outputs.sa-path != ''
+        continue-on-error: true
+        env:
+          GOOGLEDRIVE_AUTH: ${{ steps.gdrive-auth.outputs.sa-path }}
+          GDRIVE_OAUTH_TOKEN: ${{ steps.gdrive-auth.outputs.token-path }}
+        run: |
+          Rscript -e '
+            if (!requireNamespace("googledrive", quietly = TRUE)) {
+              cat("googledrive not installed; skipping credential verification\n"); quit(save = "no")
+            }
+            tp <- Sys.getenv("GDRIVE_OAUTH_TOKEN"); sp <- Sys.getenv("GOOGLEDRIVE_AUTH")
+            kind <- if (nzchar(tp)) "user OAuth token" else "service account"
+            cat("credential type:", kind, "\n")
+            ok <- tryCatch({
+              if (nzchar(tp)) googledrive::drive_auth(token = readRDS(tp))
+              else            googledrive::drive_auth(path = sp)
+              TRUE
+            }, error = function(e) { cat("AUTH FAILED:", conditionMessage(e), "\n"); FALSE })
+            if (!ok) quit(save = "no")
+            who <- tryCatch(googledrive::drive_user()$emailAddress,
+                            error = function(e) paste("ERROR:", conditionMessage(e)))
+            cat("identity:", who, "\n")
+            if (startsWith(who, "ERROR:")) {
+              cat("::warning title=Drive credential unusable::Authenticated, but the first API call failed. Drive-backed tests will produce no coverage.\n")
+            } else if (grepl("gserviceaccount", who)) {
+              cat("::warning title=Drive credential is a service account::Service accounts have no Drive quota on user-owned folders, so upload/round-trip tests cannot pass and the cloud code paths will report zero coverage.\n")
+            }
+          '
+
       - name: Test coverage
         env:
           # Exactly one of these is non-empty, depending on which credential
