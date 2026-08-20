@@ -199,8 +199,17 @@ jobs:
             kind <- if (nzchar(tp)) "user OAuth token" else "service account"
             cat("credential type:", kind, "\n")
             ok <- tryCatch({
-              if (nzchar(tp)) googledrive::drive_auth(token = readRDS(tp))
-              else            googledrive::drive_auth(path = sp)
+              if (nzchar(tp)) {
+                tok <- readRDS(tp)
+                # A gargle token carries the cache_path it was MINTED with (e.g.
+                # ~/.secret). drive_auth() writes the refreshed token back there;
+                # on a runner that directory does not exist, the write fails, and
+                # gargle reports it as "Cant get Google credentials" -- identical
+                # to having no credential at all. Match what the package test
+                # helpers do, so this step reports the credential and not that.
+                tok$cache_path <- NULL
+                googledrive::drive_auth(token = tok)
+              } else            googledrive::drive_auth(path = sp)
               TRUE
             }, error = function(e) { cat("AUTH FAILED:", conditionMessage(e), "\n"); FALSE })
             if (!ok) quit(save = "no")
