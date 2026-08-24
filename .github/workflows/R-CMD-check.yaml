@@ -90,6 +90,11 @@ jobs:
     env:
       _R_CHECK_DEPENDS_ONLY_: ${{ matrix.config.nosuggests }}
       GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
+      # Lets a package's tests tell the matrix legs apart, so a test that must
+      # run on exactly one runner (e.g. a slow upload round-trip that would race
+      # with itself across legs) can gate on it. Value is the leg's R spec:
+      # 'release', 'devel', 'oldrel-1', ...
+      R_VERSION_LABEL: ${{ matrix.config.r }}
       R_REMOTES_NO_ERRORS_FROM_WARNINGS: true
 
     steps:
