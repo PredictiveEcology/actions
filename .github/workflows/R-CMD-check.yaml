@@ -165,16 +165,39 @@ jobs:
           # served from a CDN. More reliable than CRAN mirrors for binaries.
           use-public-rspm: true
 
+      # The `nosuggests` leg runs R CMD check with _R_CHECK_DEPENDS_ONLY_=true,
+      # which hides Suggests from the check. Installing them on that leg anyway
+      # costs runner time and makes the leg look stronger than it is, so resolve
+      # hard dependencies only there.
+      #
+      # One exception: R keeps the VignetteBuilder packages visible so vignettes
+      # can still be re-built -- but they are declared in Suggests, so
+      # `dependencies: NA` leaves them uninstalled and the re-build fails with
+      # "there is no package called '<builder>'". Read them out of the package's
+      # DESCRIPTION rather than hard-coding knitr/rmarkdown here.
+      - name: Resolve VignetteBuilder packages (no-suggests leg)
+        id: vignette-builder
+        if: matrix.config.nosuggests
+        shell: bash
+        run: |
+          pkgs=$(Rscript -e 'd <- read.dcf("DESCRIPTION"); vb <- if ("VignetteBuilder" %in% colnames(d)) d[1, "VignetteBuilder"] else ""; vb <- trimws(unlist(strsplit(vb, ","))); vb <- vb[nzchar(vb)]; if (length(vb)) cat(paste0("any::", vb), sep = "\n")')
+          echo "VignetteBuilder packages: ${pkgs:-<none>}"
+          {
+            echo "packages<<__EOF__"
+            printf '%s\n' "$pkgs"
+            echo "__EOF__"
+          } >> "$GITHUB_OUTPUT"
+
       - id: deps
         continue-on-error: true
         uses: r-lib/actions/setup-r-dependencies@v2
         with:
           # Pin pak to its stable channel; devel occasionally regresses.
           pak-version: stable
-          dependencies: ${{ inputs.dependencies }}
+          dependencies: ${{ matrix.config.nosuggests && 'NA' || inputs.dependencies }}
           extra-packages: |
             any::rcmdcheck
-            ${{ inputs.extra-packages }}
+            ${{ matrix.config.nosuggests && steps.vignette-builder.outputs.packages || inputs.extra-packages }}
 
       # Fallback when setup-r-dependencies fails (most often a transient
       # binary-fetch failure under pak). Up to 3 attempts with 60s backoff.
@@ -191,7 +214,9 @@ jobs:
           shell: bash
           command: |
             Rscript -e 'install.packages("pak", repos = "https://r-lib.github.io/p/pak/stable/")' \
-                    -e 'pak::local_install_dev_deps(ask = FALSE, dependencies = TRUE)' \
+                    -e 'noSug <- identical(tolower(Sys.getenv("_R_CHECK_DEPENDS_ONLY_")), "true")' \
+                    -e 'pak::local_install_dev_deps(ask = FALSE, dependencies = if (noSug) NA else TRUE)' \
+                    -e 'if (noSug) { d <- read.dcf("DESCRIPTION"); vb <- if ("VignetteBuilder" %in% colnames(d)) d[1, "VignetteBuilder"] else ""; vb <- trimws(unlist(strsplit(vb, ","))); vb <- vb[nzchar(vb)]; if (length(vb)) pak::pkg_install(paste0("any::", vb), ask = FALSE) }' \
                     -e 'pak::pkg_install("any::rcmdcheck", ask = FALSE)'
 
       - name: Install additional package dependencies
