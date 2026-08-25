@@ -356,3 +356,28 @@ jobs:
           error-on: ${{ inputs.error-on }}
           args: ${{ inputs.check-args }}
           build_args: ${{ inputs.build-args }}
+
+      # check-r-package ships a "Show testthat output" step, but it greps
+      # `testthat.Rout*` -- i.e. it assumes the conventional tests/testthat.R
+      # driver. A package using any other driver file (reproducible drives its
+      # suite from tests/test-all.R, giving test-all.Rout) matches nothing, and
+      # the step emits an empty group.
+      #
+      # That is worth fixing because R CMD check prints the testthat summary
+      # ONLY when tests fail. For those packages a green run therefore carries
+      # no record of skip/pass counts anywhere, and `Status: OK` reads the same
+      # whether the suite ran a thousand tests or never ran at all -- which is
+      # exactly how a leg silently skipping its entire suite stayed green.
+      #
+      # testthat.Rout* is excluded; the upstream step already prints it.
+      - name: Show test output
+        if: always()
+        shell: bash
+        run: |
+          find check -path '*/tests/*' \( -name '*.Rout' -o -name '*.Rout.fail' \) \
+            ! -name 'testthat.Rout*' \
+            | while read -r f; do
+                echo "::group::$f"
+                cat "$f"
+                echo "::endgroup::"
+              done
