@@ -122,11 +122,43 @@ jobs:
           ref: ${{ matrix.downstream.ref }}
           path: _downstream
 
+      - id: pandoc1
+        continue-on-error: true
+        uses: r-lib/actions/setup-pandoc@v2
+      - if: steps.pandoc1.outcome == 'failure'
+        uses: r-lib/actions/setup-pandoc@v2
+
+      # Same rationale as R-CMD-check.yaml: no ubuntugis-unstable PPA (ABI
+      # mismatch against Posit's noble binaries), plus guards against the two
+      # known Ubuntu-24.04 apt hangs (interactive needrestart/debconf, and a
+      # stalled mirror with no per-connection timeout).
+      - name: Install geospatial system dependencies
+        timeout-minutes: 15
+        shell: bash
+        run: |
+          printf 'Acquire::Retries "5";\nAcquire::http::Timeout "30";\nAcquire::https::Timeout "30";\n' \
+            | sudo tee /etc/apt/apt.conf.d/99-ci-timeouts > /dev/null
+          sudo DEBIAN_FRONTEND=noninteractive apt-get update -y
+          sudo DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a apt-get install -y \
+            libudunits2-dev libgdal-dev libgeos-dev libproj-dev libsqlite3-dev
+
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          extra-repositories: 'https://PredictiveEcology.r-universe.dev/'
+          Ncpus: 2
+          use-public-rspm: true
+
       - name: Identify package under test
         id: pkg
         shell: bash
         run: |
-          name=$(Rscript -e 'cat(read.dcf("_pkg/DESCRIPTION")[1, "Package"])')
+          # Deliberately shell-only: this step must not depend on R being
+          # set up, so its position in the job cannot silently break it.
+          name=$(sed -n 's/^Package:[[:space:]]*//p' _pkg/DESCRIPTION | head -1 | tr -d '[:space:]')
+          if [ -z "$name" ]; then
+            echo "::error::No Package: field in _pkg/DESCRIPTION" >&2
+            exit 1
+          fi
           echo "name=$name" >> "$GITHUB_OUTPUT"
           echo "Package under test: $name"
 
@@ -169,32 +201,6 @@ jobs:
             ## Re-parse: a malformed rewrite must fail here, not at install.
             stopifnot(nrow(read.dcf(f)) == 1L)
           }
-
-      - id: pandoc1
-        continue-on-error: true
-        uses: r-lib/actions/setup-pandoc@v2
-      - if: steps.pandoc1.outcome == 'failure'
-        uses: r-lib/actions/setup-pandoc@v2
-
-      # Same rationale as R-CMD-check.yaml: no ubuntugis-unstable PPA (ABI
-      # mismatch against Posit's noble binaries), plus guards against the two
-      # known Ubuntu-24.04 apt hangs (interactive needrestart/debconf, and a
-      # stalled mirror with no per-connection timeout).
-      - name: Install geospatial system dependencies
-        timeout-minutes: 15
-        shell: bash
-        run: |
-          printf 'Acquire::Retries "5";\nAcquire::http::Timeout "30";\nAcquire::https::Timeout "30";\n' \
-            | sudo tee /etc/apt/apt.conf.d/99-ci-timeouts > /dev/null
-          sudo DEBIAN_FRONTEND=noninteractive apt-get update -y
-          sudo DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a apt-get install -y \
-            libudunits2-dev libgdal-dev libgeos-dev libproj-dev libsqlite3-dev
-
-      - uses: r-lib/actions/setup-r@v2
-        with:
-          extra-repositories: 'https://PredictiveEcology.r-universe.dev/'
-          Ncpus: 2
-          use-public-rspm: true
 
       # Resolve the DOWNSTREAM's dependencies (working-directory), and supply
       # the package under test from the checkout rather than any repository.
