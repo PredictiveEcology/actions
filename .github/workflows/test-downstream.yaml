@@ -1,0 +1,284 @@
+# Reusable downstream check for PredictiveEcology R packages.
+#
+# Checks each downstream package against the CALLER'S branch, rather than
+# against whatever is on CRAN or GitHub. Call it from a package repo (which
+# owns the triggers), e.g.:
+#
+#   name: test-downstream
+#   on:
+#     push: { branches: [main, development] }
+#     pull_request: { branches: [main, development] }
+#   jobs:
+#     test-downstream:
+#       uses: PredictiveEcology/actions/.github/workflows/test-downstream.yaml@v0.5
+#       with:
+#         downstream: >-
+#           [{"repo": "PredictiveEcology/SpaDES.core", "ref": "development"}]
+#
+# One job per downstream, run in parallel.
+#
+# ## Why the `Remotes:` unpinning step exists
+#
+# PredictiveEcology packages pin each other in `Remotes:`, e.g. SpaDES.core's
+# DESCRIPTION carries `PredictiveEcology/SpaDES.tools@development`. In a
+# downstream check that pin is actively harmful: pak honours it and installs
+# the upstream package from GitHub, silently shadowing the checkout we are
+# supposed to be testing. The job then reports on `@development` instead of
+# the caller's branch.
+#
+# It is worse than a red build, because it never goes red:
+#
+#   * on a push to `development` the pin and the checkout resolve to the same
+#     commit, so nothing looks wrong;
+#   * on a PULL REQUEST -- the case this workflow exists for -- the checkout is
+#     the PR merge commit while the pin is `development` WITHOUT the PR, so the
+#     job passes having tested none of the proposed change;
+#   * if the upstream is only in the downstream's `Suggests:` (as SpaDES.tools
+#     is for SpaDES.core), failing to install it is a NOTE, not an error, so
+#     even a total failure to install passes with `error_on = "error"`.
+#
+# So: strip the pin, install the checkout via `local::`, and then assert that
+# what actually got installed has no `RemoteSha` (i.e. did not come from
+# GitHub). The assertion is the part that keeps this honest -- without it a
+# future change to pak's resolution order would fail silently all over again.
+
+name: test-downstream
+
+on:
+  workflow_call:
+    inputs:
+      downstream:
+        description: >-
+          JSON array of downstream packages to check, one job each. Each entry
+          takes `repo` (owner/name) and `ref` (branch/tag/SHA), plus an
+          optional `check-args` overriding the workflow-level default for that
+          downstream only. E.g.
+          '[{"repo": "PredictiveEcology/SpaDES.core", "ref": "development"},
+            {"repo": "PredictiveEcology/SpaDES.project", "ref": "development",
+             "check-args": "c(\"--no-manual\", \"--as-cran\")"}]'
+        type: string
+        required: true
+      extra-packages:
+        description: "Packages appended to setup-r-dependencies `extra-packages` (newline-separated)."
+        type: string
+        default: ""
+      post-install:
+        description: "Optional Rscript run after dependency install (e.g. NLMR/fastshp)."
+        type: string
+        default: ""
+      dependencies:
+        description: "R expression for setup-r-dependencies' `dependencies` input."
+        type: string
+        default: '"all"'
+      check-args:
+        description: >-
+          R expression passed to rcmdcheck's `args` for every downstream that
+          does not override it. Defaults to
+          c("--no-manual", "--as-cran", "--run-donttest").
+        type: string
+        default: 'c("--no-manual", "--as-cran", "--run-donttest")'
+      error-on:
+        description: >-
+          rcmdcheck `error_on`. Defaults to "error": a downstream's own
+          pre-existing WARNINGs should not fail the upstream package's CI.
+        type: string
+        default: '"error"'
+
+    secrets:
+      GOOGLEDRIVE_AUTH:
+        description: >-
+          Google Drive credential, passed only to the check step. Optional --
+          Drive-backed tests in the downstream skip without it.
+        required: false
+
+jobs:
+  test-downstream:
+    runs-on: ubuntu-latest
+
+    name: ${{ matrix.downstream.repo }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        downstream: ${{ fromJSON(inputs.downstream) }}
+
+    env:
+      GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
+      NOT_CRAN: true
+      R_REMOTES_NO_ERRORS_FROM_WARNINGS: true
+
+    steps:
+      # The package under test: no `ref`, so this is the commit that triggered
+      # the caller's workflow (for a pull_request, the PR merge commit).
+      - name: Checkout package under test
+        uses: actions/checkout@v7
+        with:
+          path: _pkg
+
+      - name: Checkout ${{ matrix.downstream.repo }}
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ matrix.downstream.repo }}
+          ref: ${{ matrix.downstream.ref }}
+          path: _downstream
+
+      - id: pandoc1
+        continue-on-error: true
+        uses: r-lib/actions/setup-pandoc@v2
+      - if: steps.pandoc1.outcome == 'failure'
+        uses: r-lib/actions/setup-pandoc@v2
+
+      # Same rationale as R-CMD-check.yaml: no ubuntugis-unstable PPA (ABI
+      # mismatch against Posit's noble binaries), plus guards against the two
+      # known Ubuntu-24.04 apt hangs (interactive needrestart/debconf, and a
+      # stalled mirror with no per-connection timeout).
+      - name: Install geospatial system dependencies
+        timeout-minutes: 15
+        shell: bash
+        run: |
+          printf 'Acquire::Retries "5";\nAcquire::http::Timeout "30";\nAcquire::https::Timeout "30";\n' \
+            | sudo tee /etc/apt/apt.conf.d/99-ci-timeouts > /dev/null
+          sudo DEBIAN_FRONTEND=noninteractive apt-get update -y
+          sudo DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a apt-get install -y \
+            libudunits2-dev libgdal-dev libgeos-dev libproj-dev libsqlite3-dev
+
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          extra-repositories: 'https://PredictiveEcology.r-universe.dev/'
+          Ncpus: 2
+          use-public-rspm: true
+
+      - name: Identify package under test
+        id: pkg
+        shell: bash
+        run: |
+          # Deliberately shell-only: this step must not depend on R being
+          # set up, so its position in the job cannot silently break it.
+          name=$(sed -n 's/^Package:[[:space:]]*//p' _pkg/DESCRIPTION | head -1 | tr -d '[:space:]')
+          if [ -z "$name" ]; then
+            echo "::error::No Package: field in _pkg/DESCRIPTION" >&2
+            exit 1
+          fi
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+          echo "Package under test: $name"
+
+      # See the header comment for why this is not optional. Rewrites only
+      # the Remotes field and leaves every other byte of the DESCRIPTION
+      # alone -- deleting whole lines would take neighbouring refs with it
+      # when Remotes is written on one line, which is legal DCF.
+      - name: Unpin ${{ steps.pkg.outputs.name }} in the downstream's Remotes
+        shell: Rscript {0}
+        env:
+          PKG: ${{ steps.pkg.outputs.name }}
+        run: |
+          pkg <- Sys.getenv("PKG")
+          f <- "_downstream/DESCRIPTION"
+          ln <- readLines(f)
+          start <- grep("^Remotes:", ln)
+          if (!length(start)) {
+            cat("No Remotes: field -- nothing to unpin.\n")
+          } else {
+            ## Field block: from "Remotes:" to just before the next field.
+            isField <- grepl("^[A-Za-z][A-Za-z0-9@._-]*:", ln)
+            after <- which(isField & seq_along(ln) > start[1])
+            end <- if (length(after)) after[1] - 1L else length(ln)
+            body <- sub("^Remotes:", "", paste(ln[start[1]:end], collapse = " "))
+            refs <- trimws(unlist(strsplit(body, ",")))
+            refs <- refs[nzchar(refs)]
+            ## Compare package names exactly rather than pattern-matching the
+            ## ref: no escaping to get wrong, and "SpaDES.tools" cannot match
+            ## "SpaDES.toolsExtra". Drops "@ref", then "owner/".
+            refPkg <- sub("^.*/", "", sub("@.*$", "", refs))
+            keep <- refs[refPkg != pkg]
+            cat("Remotes before:", paste(refs, collapse = ", "), "\n")
+            cat("Remotes after :",
+                if (length(keep)) paste(keep, collapse = ", ") else "<field removed>", "\n")
+            repl <- if (length(keep))
+              c("Remotes:", paste0("    ", keep,
+                                   c(rep(",", length(keep) - 1L), ""))) else character()
+            writeLines(c(ln[seq_len(start[1] - 1L)], repl,
+                         if (end < length(ln)) ln[(end + 1L):length(ln)]), f)
+            ## Re-parse: a malformed rewrite must fail here, not at install.
+            stopifnot(nrow(read.dcf(f)) == 1L)
+          }
+
+      # Resolve the DOWNSTREAM's dependencies (working-directory), and supply
+      # the package under test from the checkout rather than any repository.
+      # `local::../_pkg` is relative to working-directory.
+      - id: deps
+        continue-on-error: true
+        uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          working-directory: _downstream
+          pak-version: stable
+          dependencies: ${{ inputs.dependencies }}
+          extra-packages: |
+            local::../_pkg
+            any::rcmdcheck
+            ${{ inputs.extra-packages }}
+
+      - name: Install R deps (retry fallback)
+        if: steps.deps.outcome == 'failure'
+        uses: nick-fields/retry@v3
+        with:
+          timeout_minutes: 30
+          max_attempts: 3
+          retry_wait_seconds: 60
+          retry_on: error
+          shell: bash
+          command: |
+            Rscript -e 'install.packages("pak", repos = "https://r-lib.github.io/p/pak/stable/")' \
+                    -e 'setwd("_downstream")' \
+                    -e 'pak::local_install_dev_deps(ask = FALSE)' \
+                    -e 'pak::pkg_install(c("local::../_pkg", "any::rcmdcheck"), ask = FALSE)'
+
+      - name: Install additional package dependencies
+        if: ${{ inputs.post-install != '' }}
+        run: ${{ inputs.post-install }}
+        shell: Rscript {0}
+
+      # The assertion that keeps this workflow honest -- see the header.
+      # A `RemoteSha` means pak resolved the package from GitHub rather than
+      # from `local::../_pkg`, so the check below would report on the wrong
+      # code. Fail loudly instead of passing green.
+      - name: Verify the package under test is the one installed
+        shell: Rscript {0}
+        env:
+          PKG: ${{ steps.pkg.outputs.name }}
+        run: |
+          pkg <- Sys.getenv("PKG")
+          if (!nzchar(system.file(package = pkg)))
+            stop(pkg, " is not installed; the downstream check would be vacuous")
+          d <- packageDescription(pkg)
+          fld <- function(x) if (is.null(d[[x]])) "none" else d[[x]]
+          cat(pkg, "version:", fld("Version"),
+              "| RemoteType:", fld("RemoteType"),
+              "| RemoteSha:", fld("RemoteSha"), "\n")
+          if (!is.null(d$RemoteSha))
+            stop(pkg, " was installed from a remote (RemoteSha present), not ",
+                 "from the checkout under test. The downstream Remotes pin was ",
+                 "not stripped, so this check would report on the wrong code.")
+          local <- read.dcf("_pkg/DESCRIPTION")[1, "Version"]
+          if (!identical(unname(local), d$Version))
+            stop("installed ", pkg, " is ", d$Version,
+                 " but the checkout under test is ", local)
+          cat("OK:", pkg, d$Version, "installed from the checkout under test\n")
+
+      - name: Check ${{ matrix.downstream.repo }}
+        shell: Rscript {0}
+        env:
+          GOOGLEDRIVE_AUTH: ${{ secrets.GOOGLEDRIVE_AUTH }}
+        run: |
+          rcmdcheck::rcmdcheck(
+            "_downstream",
+            args = ${{ matrix.downstream['check-args'] || inputs.check-args }},
+            error_on = ${{ inputs.error-on }},
+            check_dir = "check"
+          )
+
+      - name: Upload check results
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.pkg.outputs.name }}-downstream-${{ strategy.job-index }}-results
+          path: check
