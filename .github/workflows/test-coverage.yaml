@@ -34,6 +34,15 @@ on:
         description: "R expression for setup-r-dependencies' `dependencies` input. Use NA when transitive Suggests resolution conflicts (then add the needed Suggests directly via extra-packages)."
         type: string
         default: '"all"'
+      run-in-tmux:
+        description: >-
+          Run the covr step inside a detached tmux session. Needed by packages
+          whose code branches on Sys.getenv("TMUX") (e.g. SpaDES.project's
+          experimentTmux()); without it those paths are unreachable on CI and
+          every test gated on being inside tmux silently skips. Off by default,
+          so existing callers are unaffected.
+        type: boolean
+        default: false
 
     secrets:
       GOOGLEDRIVE_AUTH:
@@ -81,6 +90,13 @@ jobs:
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -f -y || true
           sudo DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a apt-get install -y --fix-missing \
             libudunits2-dev libgdal-dev libgeos-dev libproj-dev libsqlite3-dev
+        shell: bash
+
+      - name: Install tmux
+        if: ${{ inputs.run-in-tmux }}
+        run: |
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y tmux
+          tmux -V
         shell: bash
 
       - uses: r-lib/actions/setup-r@v2
@@ -240,7 +256,9 @@ jobs:
         # loses only the orphan's coverage and lets the rest report normally.
         # The skip is logged with the file path and size so a real corruption
         # (vs. a benign orphan) is still visible.
+        shell: bash
         run: |
+          cat > "${RUNNER_TEMP}/test-coverage.R" <<'RSCRIPT'
           ns <- asNamespace("covr")
           orig <- get("merge_coverage.character", envir = ns, inherits = FALSE)
           wrapped <- function(x, ...) {
@@ -265,4 +283,18 @@ jobs:
           lockBinding("merge_coverage.character", ns)
 
           covr::codecov(quiet = FALSE)
-        shell: Rscript {0}
+          RSCRIPT
+
+          if [ "${{ inputs.run-in-tmux }}" = "true" ]; then
+            # `tmux new-session -d <cmd>` runs the command in a pane, so the R
+            # process inherits TMUX and code branching on it becomes reachable.
+            # Poll for the session to end so this step's exit status reflects R;
+            # a bare send-keys would discard it.
+            tmux new-session -d -s covr \
+              "Rscript '${RUNNER_TEMP}/test-coverage.R' > '${RUNNER_TEMP}/covr.log' 2>&1; echo \$? > '${RUNNER_TEMP}/covr.rc'"
+            while tmux has-session -t covr 2>/dev/null; do sleep 5; done
+            cat "${RUNNER_TEMP}/covr.log"
+            exit "$(cat "${RUNNER_TEMP}/covr.rc" 2>/dev/null || echo 1)"
+          else
+            Rscript "${RUNNER_TEMP}/test-coverage.R"
+          fi
