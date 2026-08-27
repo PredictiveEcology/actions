@@ -246,6 +246,8 @@ jobs:
           # does locally.
           GOOGLEDRIVE_AUTH: ${{ steps.gdrive-auth.outputs.sa-path }}
           GDRIVE_OAUTH_TOKEN: ${{ steps.gdrive-auth.outputs.token-path }}
+          # Ceiling for the tmux-wrapped run; baseline is ~15 min.
+          TMUX_COVR_TIMEOUT: "3600"
         # Wraps covr::merge_coverage.character to skip unreadable per-test trace
         # files (zero-byte or truncated RDS) instead of aborting with the cryptic
         # `Error in readRDS(f) : error reading from connection`. Root cause: a
@@ -288,13 +290,36 @@ jobs:
           if [ "${{ inputs.run-in-tmux }}" = "true" ]; then
             # `tmux new-session -d <cmd>` runs the command in a pane, so the R
             # process inherits TMUX and code branching on it becomes reachable.
-            # Poll for the session to end so this step's exit status reflects R;
-            # a bare send-keys would discard it.
+            rc_file="${RUNNER_TEMP}/covr.rc"
+            log_file="${RUNNER_TEMP}/covr.log"
+            rm -f "$rc_file"
+
             tmux new-session -d -s covr \
-              "Rscript '${RUNNER_TEMP}/test-coverage.R' > '${RUNNER_TEMP}/covr.log' 2>&1; echo \$? > '${RUNNER_TEMP}/covr.rc'"
-            while tmux has-session -t covr 2>/dev/null; do sleep 5; done
-            cat "${RUNNER_TEMP}/covr.log"
-            exit "$(cat "${RUNNER_TEMP}/covr.rc" 2>/dev/null || echo 1)"
+              "Rscript '${RUNNER_TEMP}/test-coverage.R' > '$log_file' 2>&1; echo \$? > '$rc_file'"
+
+            # Wait for R to RECORD ITS EXIT STATUS, not for the tmux session to
+            # disappear. Those are not the same event: a test that leaves an
+            # orphaned child (covr suites do this routinely -- see the
+            # merge_coverage wrapper above, and "Error while shutting down
+            # parallel: unable to terminate some child processes") keeps the pane
+            # alive after R is gone, so `tmux has-session` never goes false and
+            # the step hangs until the job timeout. Observed once as a 2h11m
+            # "Test coverage" step against a ~15 min baseline.
+            deadline=$(( SECONDS + TMUX_COVR_TIMEOUT ))
+            while [ ! -f "$rc_file" ]; do
+              if [ "$SECONDS" -ge "$deadline" ]; then
+                echo "::error title=Coverage timed out::No exit status after ${TMUX_COVR_TIMEOUT}s."
+                tmux kill-session -t covr 2>/dev/null || true
+                [ -f "$log_file" ] && cat "$log_file"
+                exit 1
+              fi
+              sleep 5
+            done
+
+            # R is done; the pane may still be held open by an orphan.
+            tmux kill-session -t covr 2>/dev/null || true
+            cat "$log_file"
+            exit "$(cat "$rc_file")"
           else
             Rscript "${RUNNER_TEMP}/test-coverage.R"
           fi
