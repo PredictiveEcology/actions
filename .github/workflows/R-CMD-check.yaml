@@ -47,6 +47,20 @@ on:
         description: "Extra matrix legs appended via `include` (JSON array of {config:{...}} objects). Default none. E.g. '[{\"config\":{\"os\":\"windows-latest\",\"nosuggests\":false,\"r\":\"oldrel-2\"}}]' to also test an older R."
         type: string
         default: "[]"
+      cache-version:
+        description: "Bump to invalidate the dependency cache. Exposed so a caller can clear a poisoned library (e.g. a terra built against the wrong libgdal) without a PR to this repo."
+        type: string
+        default: "1"
+      extra-repositories:
+        description: >-
+          Extra repositories for setup-r. Defaults to the PredictiveEcology
+          r-universe, which is what this workflow hardcoded before it was
+          exposed -- so existing callers are unaffected. Worth setting to "" for
+          a package whose dependencies are all on CRAN: r-universe serves
+          development versions, so leaving it on risks checking against a
+          dependency version CRAN will never have.
+        type: string
+        default: "https://PredictiveEcology.r-universe.dev/"
       build-args:
         description: "R expression passed to check-r-package's `build_args` (the R CMD build flags). Defaults to c(\"--no-manual\", \"--compact-vignettes=gs+qpdf\") so PDF vignettes are compacted for all packages (smaller installed size, avoids CRAN NOTEs; a no-op when there are no PDF vignettes). Override to change."
         type: string
@@ -100,241 +114,30 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      # setup-pandoc occasionally fails with HTTP 5xx (CDN blip).
-      # Three attempts with continue-on-error ride out transient failures.
-      - id: pandoc1
-        continue-on-error: true
-        uses: r-lib/actions/setup-pandoc@v2
-      - if: steps.pandoc1.outcome == 'failure'
-        id: pandoc2
-        continue-on-error: true
-        uses: r-lib/actions/setup-pandoc@v2
-      - if: steps.pandoc1.outcome == 'failure' && steps.pandoc2.outcome == 'failure'
-        uses: r-lib/actions/setup-pandoc@v2
-
-      # Install geospatial system deps WITHOUT the ubuntugis-unstable PPA.
-      # That PPA installs libgdal37 (GDAL 3.11.x), but Posit's noble binary cache
-      # builds quickPlot/sf/terra against the Ubuntu-default libgdal34 -- the ABI
-      # mismatch surfaces as `libgdal.so.34: cannot open shared object file` when
-      # quickPlot loads (and fails the whole check via SpaDES.core lazy-load).
-      - name: Install geospatial system dependencies (Linux)
-        if: runner.os == 'Linux'
-        # Two independent Ubuntu-24.04 CI hangs are guarded here:
-        #  (1) apt's post-install needrestart/debconf can block on an interactive
-        #      prompt -> DEBIAN_FRONTEND=noninteractive / NEEDRESTART_MODE=a
-        #      (passed through `sudo`, which otherwise resets the environment).
-        #  (2) GitHub's azure.archive.ubuntu.com mirror intermittently returns
-        #      Ign and apt fails over to archive.ubuntu.com, but with no
-        #      per-connection timeout a stalled fetch hangs until this step's
-        #      timeout fires (observed: apt got InRelease then sat idle ~14.5
-        #      min). Short acquire timeouts + retries make a dead connection
-        #      abort in ~30s and fail over instead of hanging.
-        # timeout-minutes is only a last-resort backstop, not the primary guard.
-        timeout-minutes: 15
-        run: |
-          printf 'Acquire::Retries "5";\nAcquire::http::Timeout "30";\nAcquire::https::Timeout "30";\n' \
-            | sudo tee /etc/apt/apt.conf.d/99-ci-timeouts > /dev/null
-          sudo DEBIAN_FRONTEND=noninteractive apt-get update -y
-          sudo DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a apt-get install -y \
-            libudunits2-dev libgdal-dev libgeos-dev libproj-dev libsqlite3-dev
-        shell: bash
-      - name: Install geospatial system dependencies (macOS)
-        if: runner.os == 'macOS'
-        run: |
-          brew install pkg-config
-          brew install gdal
-        shell: zsh {0}
-
-      # Homebrew's gdal/proj install does not always leave proj.db on PROJ's
-      # default search path. Without it, terra::project()/terra::crs() emit
-      # "PROJ: proj_identify: Cannot find proj.db (GDAL error 1)" and any
-      # reprojection-touching test fails. Point PROJ at Homebrew's data dir.
-      - name: Configure PROJ data path (macOS)
-        if: runner.os == 'macOS'
-        run: |
-          PROJ_PREFIX="$(brew --prefix proj 2>/dev/null || true)"
-          PROJ_DATA="$PROJ_PREFIX/share/proj"
-          if [ ! -d "$PROJ_DATA" ]; then PROJ_DATA="/opt/homebrew/share/proj"; fi
-          if [ ! -d "$PROJ_DATA" ]; then PROJ_DATA="/usr/local/share/proj"; fi
-          echo "PROJ_DATA=$PROJ_DATA" >> "$GITHUB_ENV"
-          echo "PROJ_LIB=$PROJ_DATA"  >> "$GITHUB_ENV"
-          echo "Using PROJ_DATA=$PROJ_DATA"
-          ls -1 "$PROJ_DATA" | head -5 || true
-
-      - uses: r-lib/actions/setup-r@v2
+      # Everything from pandoc through the dependency install now lives in the
+      # setup-r-deps composite action, so a job that is not running R CMD check
+      # can reuse it. See PredictiveEcology/actions#24.
+      - uses: PredictiveEcology/actions/setup-r-deps@main
         with:
-          extra-repositories: 'https://PredictiveEcology.r-universe.dev/'
-          Ncpus: 2
           r-version: ${{ matrix.config.r }}
-          # Posit Public Package Manager — pre-built Windows + macOS binaries
-          # served from a CDN. More reliable than CRAN mirrors for binaries.
-          use-public-rspm: true
-
-      # The `nosuggests` leg runs R CMD check with _R_CHECK_DEPENDS_ONLY_=true.
-      # That env var is what provides the guarantee: check restricts itself to
-      # a library of hard dependencies only, so installing Suggests alongside
-      # does NOT weaken the leg.
-      #
-      # So install everything here. Skipping Suggests looks like a free saving,
-      # but the test driver (tests/testthat.R, tests/test-all.R) calls
-      # `library(testthat)` unconditionally and testthat is a Suggests -- the
-      # leg then dies with "there is no package called 'testthat'" before any
-      # check output exists. It does not fail uniformly, which is what makes it
-      # nasty: some packages' trees pull testthat in from RSPM incidentally and
-      # survive, others do not. SpaDES.tools did not; reproducible did.
-      #
-      # `dependencies: NA` plus an explicit `any::testthat` is the right shape
-      # only where there are no binary builds and installing Suggests would mean
-      # long source builds -- i.e. the separate Fedora workflow, which does
-      # exactly that and documents why. Do not copy that strategy back here.
-      - id: deps
-        continue-on-error: true
-        uses: r-lib/actions/setup-r-dependencies@v2
-        with:
-          # Pin pak to its stable channel; devel occasionally regresses.
-          pak-version: stable
           dependencies: ${{ inputs.dependencies }}
+          cache-version: ${{ inputs.cache-version }}
+          extra-repositories: ${{ inputs.extra-repositories }}
+          post-install: ${{ inputs.post-install }}
           extra-packages: |
             any::rcmdcheck
             ${{ inputs.extra-packages }}
 
-      # Fallback when setup-r-dependencies fails (most often a transient
-      # binary-fetch failure under pak). Up to 3 attempts with 60s backoff.
-      # `nick-fields/retry@v4` does not accept `shell: Rscript {0}`, so we
-      # invoke Rscript -e from bash.
-      - name: Install R deps (retry fallback)
-        if: steps.deps.outcome == 'failure'
-        uses: nick-fields/retry@v3
-        with:
-          timeout_minutes: 30
-          max_attempts: 3
-          retry_wait_seconds: 60
-          retry_on: error
-          shell: bash
-          command: |
-            Rscript -e 'install.packages("pak", repos = "https://r-lib.github.io/p/pak/stable/")' \
-                    -e 'pak::local_install_dev_deps(ask = FALSE, dependencies = TRUE)' \
-                    -e 'pak::pkg_install("any::rcmdcheck", ask = FALSE)'
-
-      - name: Install additional package dependencies
-        if: ${{ inputs.post-install != '' }}
-        run: ${{ inputs.post-install }}
-        shell: Rscript {0}
-
-      # RcppParallel bundles TBB and its ABI is a property of the RcppParallel
-      # build, not the toolchain. When RcppParallel changes that ABI, every
-      # package linking it must be rebuilt -- 6.0.0 (2026-07-23) moved to
-      # oneTBB 2022.0.0 and its NEWS says as much. Repositories that have not
-      # yet rebuilt still serve binaries against the old ABI; those install
-      # without complaint and only fail at `dlopen`, e.g. on macOS-arm64:
-      #   qs2.so:        missing tbb::task::note_affinity
-      #   stringfish.so: missing tbb::internal::concurrent_vector_base_v3::internal_grow_by
-      # When such a package is in Imports, this kills `R CMD build` at the
-      # install-to-build-vignettes stage, before any check output exists.
-      #
-      # Probe rather than pin a version: we cannot know which release fixes a
-      # given mismatch, but we can ask whether it loads. No-op once the binaries
-      # are healthy, so this needs no maintenance and costs nothing when unused.
-      # RcppParallel itself is excluded -- building it from source needs cmake.
-      - name: Rebuild RcppParallel-linked packages that fail to load
-        shell: Rscript {0}
-        run: |
-          ip <- installed.packages()
-          links <- vapply(rownames(ip), function(p)
-            any(grepl("\\bRcppParallel\\b", ip[p, c("Depends", "Imports", "LinkingTo")])),
-            logical(1))
-          cands <- setdiff(rownames(ip)[links], "RcppParallel")
-          loads <- function(p) requireNamespace(p, quietly = TRUE)
-          broken <- Filter(Negate(loads), cands)
-          if (length(broken)) {
-            message("These link RcppParallel ", packageVersion("RcppParallel"),
-                    " but fail to load; rebuilding from source: ",
-                    paste(broken, collapse = ", "))
-            # dependencies first, so e.g. stringfish is rebuilt before qs2 --
-            # rebuilding a package against a still-broken dependency just fails again
-            deps <- tools::package_dependencies(broken, db = ip, recursive = TRUE)
-            nDeps <- vapply(broken, function(p) sum(broken %in% deps[[p]]), integer(1))
-            for (p in broken[order(nDeps)]) install.packages(p, type = "source")
-            stillBroken <- Filter(Negate(loads), broken)
-            if (length(stillBroken))
-              stop("still failing to load after a source rebuild: ",
-                   paste(stillBroken, collapse = ", "))
-          }
-
-      # Google Drive service-account credentials, staged as late as possible.
-      # Every step above installs code (pak, the retry fallback, and whatever
-      # `post-install` fetches from GitHub), and none of it needs this
-      # credential -- so it is deliberately NOT a job-level `env:`. Only
+      # Staged as late as possible: every step above installs and runs
+      # third-party code, and none of it needs this credential. Only
       # check-r-package below receives it, via a step-level `env:`.
-      #
-      # The secret reaches this script through the step `env:` rather than
-      # `${{ }}` interpolation, so it is never pasted into the shell source.
-      # Only the resulting PATH is handed onward: a multi-line value in `env:`
-      # arrives EMPTY on Windows runners (LandR 947b5fc1 -- PowerShell cannot
-      # set env vars containing newlines), so a base64-encoded secret is the
-      # reliable form. Both are accepted: a value whose first non-space
-      # character is `{` is treated as raw JSON, anything else as base64.
-      #
-      # `_PRESENT` is a single-line boolean that always survives the env
-      # boundary. It is what separates "no secret configured" (quiet, and
-      # normal on fork PRs, where GitHub withholds secrets) from "secret
-      # configured but dropped in transit" (warned) -- previously both looked
-      # identical and Drive-backed tests just skipped in silence.
       - name: Stage Google Drive credentials
         id: gdrive-auth
-        shell: bash
-        env:
-          GOOGLEDRIVE_AUTH_SECRET: ${{ secrets.GOOGLEDRIVE_AUTH }}
-          GOOGLEDRIVE_AUTH_PRESENT: ${{ secrets.GOOGLEDRIVE_AUTH != '' }}
-        run: |
-          set -euo pipefail
-          if [ -z "${GOOGLEDRIVE_AUTH_SECRET:-}" ]; then
-            if [ "${GOOGLEDRIVE_AUTH_PRESENT}" = "true" ]; then
-              echo "::warning title=Google Drive auth unavailable::GOOGLEDRIVE_AUTH is configured for this repository but arrived empty on ${RUNNER_OS}. Multi-line secrets do not survive the env: boundary on Windows runners -- re-store the secret base64-encoded. Drive-backed tests will SKIP."
-            else
-              echo "GOOGLEDRIVE_AUTH not configured; Drive-backed tests will skip."
-            fi
-            exit 0
-          fi
-          raw="${RUNNER_TEMP}/gdrive-credential"
-          case "$(printf '%s' "${GOOGLEDRIVE_AUTH_SECRET}" | head -c 64 | tr -d '[:space:]')" in
-            \{*) printf '%s' "${GOOGLEDRIVE_AUTH_SECRET}" > "$raw" ;;
-            *)   printf '%s' "${GOOGLEDRIVE_AUTH_SECRET}" | base64 -d > "$raw" 2>/dev/null || : ;;
-          esac
-          if [ ! -s "$raw" ]; then
-            rm -f "$raw"
-            echo "::warning title=Google Drive auth unusable::GOOGLEDRIVE_AUTH did not decode to anything. Drive-backed tests will SKIP."
-            exit 0
-          fi
-          # One secret, two possible credential types -- sniff which arrived and
-          # export a TYPED output so the R side never has to guess:
-          #   service-account JSON -> GOOGLEDRIVE_AUTH  (drive_auth(path=))
-          #   serialized R token   -> GDRIVE_OAUTH_TOKEN (drive_auth(token=))
-          # A user OAuth token is preferred: a service account has no Drive quota
-          # on user-owned folders, so it authenticates but cannot complete an
-          # upload round-trip, which silently leaves those tests uncovered.
-          if grep -q '"service_account"' "$raw" 2>/dev/null; then
-            f="${RUNNER_TEMP}/google-sa.json"
-            mv "$raw" "$f"
-            echo "sa-path=$f" >> "$GITHUB_OUTPUT"
-            echo "Staged service-account JSON ($(wc -c < "$f") bytes) at $f"
-            exit 0
-          fi
-          # readRDS() accepts gzip (1f8b), bzip2 (425a), xz (fd37) or an
-          # uncompressed R serialization header (X/A/B followed by a newline).
-          magic="$(head -c 2 "$raw" | od -An -tx1 | tr -d ' \n')"
-          case "$magic" in
-            1f8b|425a|fd37|58*|41*|42*) ;;
-            *)
-              rm -f "$raw"
-              echo "::warning title=Google Drive auth unusable::GOOGLEDRIVE_AUTH decoded to neither service-account JSON nor a serialized R token. Drive-backed tests will SKIP."
-              exit 0
-              ;;
-          esac
-          f="${RUNNER_TEMP}/google-oauth-token.rds"
-          mv "$raw" "$f"
-          echo "token-path=$f" >> "$GITHUB_OUTPUT"
-          echo "Staged Drive user OAuth token ($(wc -c < "$f") bytes) at $f"
+        uses: PredictiveEcology/actions/stage-gdrive-auth@main
+        with:
+          credential: ${{ secrets.GOOGLEDRIVE_AUTH }}
+          present: ${{ secrets.GOOGLEDRIVE_AUTH != '' }}
+
 
       - uses: r-lib/actions/check-r-package@v2
         env:

@@ -3,9 +3,9 @@ description: 'Action to install remotes and Require R packages'
 author: 'Ceres Barros'
 inputs:
   GitTag:
-    description: "A character indicating the branch, commit SHA or tag to append to 'PredictiveEcology/Require@'. Defaults to 'master' branch"
+    description: "A character indicating the branch, commit SHA or tag to append to 'PredictiveEcology/Require@'. Defaults to 'development'."
     required: true
-    default: "master"
+    default: "development"
 runs:
   using: "composite"
   steps:

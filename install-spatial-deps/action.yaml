@@ -29,14 +29,41 @@ runs:
             echo "::error::'$2' still failing after 3 attempts"
             return 1
           }
-          retry 5m  "sudo -E add-apt-repository -y ppa:ubuntugis/ubuntugis-unstable"
-          retry 5m  "sudo -E apt-get update -y"
-          retry 10m "sudo -E apt-get install -y --no-install-recommends \
+          ## NO ubuntugis-unstable PPA. It installs libgdal37 (GDAL 3.11.x), but
+          ## Posit's noble binary cache builds quickPlot/sf/terra against the
+          ## Ubuntu-default libgdal34 -- the ABI mismatch surfaces as
+          ## `libgdal.so.34: cannot open shared object file` when quickPlot loads,
+          ## and fails the whole check via a lazy-load. This action used to add
+          ## the PPA while the reusable workflows deliberately refused it, so the
+          ## org shipped two contradictory answers to the same question.
+          printf 'Acquire::Retries "5";\nAcquire::http::Timeout "30";\nAcquire::https::Timeout "30";\n' \
+            | sudo tee /etc/apt/apt.conf.d/99-ci-timeouts > /dev/null
+          retry 5m  "sudo -E DEBIAN_FRONTEND=noninteractive apt-get update -y"
+          retry 10m "sudo -E DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a \
+                       apt-get install -y --no-install-recommends \
                        libudunits2-dev libgdal-dev libgeos-dev libproj-dev libsqlite3-dev"
+          ## Fail loudly rather than proceeding with silently different libraries.
+          gdal-config --version && geos-config --version && proj --version
         shell: bash
       - name: Install geospatial system dependencies (macOS)
         if: runner.os == 'macOS'
         run: |
-          brew install pkg-config
-          brew install gdal
-        shell: zsh {0}
+          brew install pkg-config gdal
+        shell: bash
+      ## Homebrew's gdal/proj install does not always leave proj.db on PROJ's
+      ## default search path. Without it, terra::project()/terra::crs() emit
+      ## "PROJ: proj_identify: Cannot find proj.db (GDAL error 1)" and any
+      ## reprojection-touching test fails. The reusable workflows already did
+      ## this; this action did not, so its consumers hit the failure.
+      - name: Configure PROJ data path (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          PROJ_PREFIX="$(brew --prefix proj 2>/dev/null || true)"
+          PROJ_DATA="$PROJ_PREFIX/share/proj"
+          if [ ! -d "$PROJ_DATA" ]; then PROJ_DATA="/opt/homebrew/share/proj"; fi
+          if [ ! -d "$PROJ_DATA" ]; then PROJ_DATA="/usr/local/share/proj"; fi
+          echo "PROJ_DATA=$PROJ_DATA" >> "$GITHUB_ENV"
+          echo "PROJ_LIB=$PROJ_DATA"  >> "$GITHUB_ENV"
+          echo "Using PROJ_DATA=$PROJ_DATA"
+          ls -1 "$PROJ_DATA" | head -5 || true
+        shell: bash
