@@ -84,7 +84,13 @@ jobs:
   R-CMD-check:
     runs-on: ${{ matrix.config.os }}
 
-    name: ${{ matrix.config.os }} (${{ matrix.config.r }})
+    # The nosuggests discriminator is load-bearing, not cosmetic. Without it
+    # this matrix produces two jobs both called `ubuntu-latest (release)`:
+    # you cannot tell from the checks list whether the no-suggests leg
+    # passed, branch protection cannot name it as a required check, and if
+    # it silently stopped being generated nobody would notice. Appended only
+    # when true, so the other job names stay stable for branch protection.
+    name: ${{ matrix.config.os }} (${{ matrix.config.r }}${{ matrix.config.nosuggests && ', nosuggests' || '' }})
 
     strategy:
       fail-fast: false
