@@ -1,3 +1,20 @@
+## Why this action still exists, now that setup-r-deps installs these same
+## libraries (by delegating to this action):
+##
+## The SpaDES *module* repositories are the consumers that cannot go through
+## the package path. A module repo has no DESCRIPTION -- its dependencies are
+## declared inside `defineModule(reqdPkgs = ...)` -- so there is nothing for
+## pak or `setup-r-dependencies` to resolve against, and modules install their
+## dependencies with `Require::Require()` instead. Nothing on that path
+## installs system libraries: Require's `.onLoad` sets `PKG_SYSREQS=false` and
+## `PKG_SYSREQS_SUDO=false` (checked against Require 2.0.0.9036), deliberately,
+## because CRAN treats a package that shells out to sudo on the user's machine
+## as machine hijacking.
+##
+## So on a module repo's CI, GDAL/GEOS/PROJ arrive here or not at all.
+## setup-r-deps covers the package repositories; this action covers the module
+## repositories and the standalone consumers (NetLogoR at @main; LandR, map and
+## SpaDES.shiny on old tags). It is not dead code -- do not delete it.
 name: 'install-spatial-deps'
 description: 'Action to install system dependencies of geospatial packages'
 author: 'Alex Chubaty'
@@ -29,13 +46,17 @@ runs:
             echo "::error::'$2' still failing after 3 attempts"
             return 1
           }
-          ## NO ubuntugis-unstable PPA. It installs libgdal37 (GDAL 3.11.x), but
-          ## Posit's noble binary cache builds quickPlot/sf/terra against the
-          ## Ubuntu-default libgdal34 -- the ABI mismatch surfaces as
-          ## `libgdal.so.34: cannot open shared object file` when quickPlot loads,
-          ## and fails the whole check via a lazy-load. This action used to add
-          ## the PPA while the reusable workflows deliberately refused it, so the
-          ## org shipped two contradictory answers to the same question.
+          ## NO ubuntugis-unstable PPA. It installs GDAL 3.11.x, whose runtime
+          ## is libgdal.so.37, but Posit's noble binary cache builds the
+          ## compiled spatial packages (sf, terra) against noble's own
+          ## libgdal34t64, i.e. libgdal.so.34. The mismatch surfaces as
+          ## `libgdal.so.34: cannot open shared object file` at lazy-load time
+          ## and fails the whole check. (NOT quickPlot, which an older version
+          ## of this comment blamed: quickPlot is `NeedsCompilation: no` and
+          ## links nothing -- it only fails as the package that happens to load
+          ## sf/terra first.) This action used to add the PPA while the
+          ## reusable workflows deliberately refused it, so the org shipped two
+          ## contradictory answers to the same question.
           printf 'Acquire::Retries "5";\nAcquire::http::Timeout "30";\nAcquire::https::Timeout "30";\n' \
             | sudo tee /etc/apt/apt.conf.d/99-ci-timeouts > /dev/null
           retry 5m  "sudo -E DEBIAN_FRONTEND=noninteractive apt-get update -y"
