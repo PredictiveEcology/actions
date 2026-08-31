@@ -19,7 +19,6 @@ For details and example usage of each action, please see the corresponding actio
 1. [PredictiveEcology/actions/install-Rmd-pkgs](https://github.com/PredictiveEcology/actions/tree/main/install-Rmd-pkgs) - Installs packages commonly needed to render SpaDES module manuals;
 1. [PredictiveEcology/actions/install-SpaDES](https://github.com/PredictiveEcology/actions/tree/v0/install-SpaDES) - Installs `SpaDES` packages;
 1. [PredictiveEcology/actions/install-spatial-deps](https://github.com/PredictiveEcology/actions/tree/main/install-spatial-deps) - installs additional system dependencies for geospatial packages on Ubuntu Linux and macOS;
-1. [PredictiveEcology/actions/revdeps-check](https://github.com/PredictiveEcology/actions/tree/main/revdeps-check) - run reverse dependency checks for R packages;
 
 # More information on GitHub Actions
 

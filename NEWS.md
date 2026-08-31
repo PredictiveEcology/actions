@@ -27,6 +27,19 @@
   workflows did and this action did not, so its consumers hit
   "Cannot find proj.db") and asserts the installed library versions rather than
   proceeding silently;
+- **the `revdeps-check` action has been removed.** Two of its three inputs
+  never did anything. `isTRUE("${{ inputs.cranonly }}")` is `FALSE` for every
+  string R can be handed there, so the CRAN-only branch was unreachable and the
+  `else` branch always ran -- while the crancache key *did* vary on the input,
+  so setting it bought a separate cache namespace for an identical revdep set.
+  `as.difftime("30", units = "mins")` is `NA mins`, so the per-revdep timeout
+  has never applied, in an action whose own README says it is "too resource
+  intensive for standard GitHub runners". Its first step calls
+  `pak::pkg_install()` and nothing in the action installs pak, which the
+  README's own usage example would not have supplied either. Its only consumer,
+  `quickPlot`'s `revdeps.yaml`, is `disabled_manually` with zero recorded runs;
+  `SpaDES.tools` runs `revdepcheck` locally from `revdep/check.R` instead.
+  `@v0.5` and earlier still carry the action for anyone who wants it back;
 - **`install-Require`'s default `GitTag` is now `development`.** The default was
   `master`, a branch that no longer exists on `PredictiveEcology/Require`, so
   the default was dead code that would hard-fail if anyone relied on it.
