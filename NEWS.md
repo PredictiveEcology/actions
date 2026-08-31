@@ -52,6 +52,8 @@
   README still said the `SpaDES` metapackage comes from CRAN, where it has been
   archived since 2026-07-13. The root README's "Releases and tags" section is
   now "Which ref to use", and says `@main`, with the reasons;
+- **`setup-r-deps` and `stage-gdrive-auth` now carry a `LICENSE`**, as every
+  older action in the repository does;
 - **`install-Require`'s default `GitTag` is now `development`.** The default was
   `master`, a branch that no longer exists on `PredictiveEcology/Require`, so
   the default was dead code that would hard-fail if anyone relied on it.

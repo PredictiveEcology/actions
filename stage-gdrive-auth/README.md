@@ -65,3 +65,11 @@ silent.
 
 Rejecting the credential outright, with a failed step, is the only signal that
 cannot be mistaken for "no credential configured".
+
+## License
+
+The scripts and documentation in this project are released under the [MIT License](LICENSE)
+
+## Contributions
+
+Contributions are welcome!

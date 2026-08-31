@@ -53,3 +53,11 @@ steps are bounded with GNU `timeout` inside the `run:` block instead, which also
 gives a per-command cap rather than one cap for the whole step. The dependency
 retry uses `nick-fields/retry`, whose own `timeout_minutes` does work — composite
 actions may `uses:` other actions.
+
+## License
+
+The scripts and documentation in this project are released under the [MIT License](LICENSE)
+
+## Contributions
+
+Contributions are welcome!
