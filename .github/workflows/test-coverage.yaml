@@ -119,82 +119,17 @@ jobs:
         run: ${{ inputs.post-install }}
         shell: Rscript {0}
 
-      # Google Drive service-account credentials. Staged after the install
-      # steps and handed only to the "Test coverage" step below, so the
-      # credential is never in the environment of a step that installs
-      # third-party code. Accepts base64 (preferred) or raw JSON, and warns
-      # rather than silently skipping when the secret is set but unusable.
-      # See R-CMD-check.yaml for the full rationale.
+      # Staged after the install steps and handed only to the "Test coverage"
+      # step below, so the credential is never in the environment of a step that
+      # installs third-party code. Shared with R-CMD-check.yaml rather than
+      # duplicated: this block drifted from its twin once already.
       - name: Stage Google Drive credentials
         id: gdrive-auth
-        shell: bash
-        env:
-          GOOGLEDRIVE_AUTH_SECRET: ${{ secrets.GOOGLEDRIVE_AUTH }}
-          GOOGLEDRIVE_AUTH_PRESENT: ${{ secrets.GOOGLEDRIVE_AUTH != '' }}
-        run: |
-          set -euo pipefail
-          if [ -z "${GOOGLEDRIVE_AUTH_SECRET:-}" ]; then
-            if [ "${GOOGLEDRIVE_AUTH_PRESENT}" = "true" ]; then
-              echo "::warning title=Google Drive auth unavailable::GOOGLEDRIVE_AUTH is configured for this repository but arrived empty on ${RUNNER_OS}. A serialized token is binary and MUST be stored base64-encoded; multi-line values are also dropped at the env: boundary on Windows runners. Drive-backed tests will SKIP."
-            else
-              echo "GOOGLEDRIVE_AUTH not configured; Drive-backed tests will skip."
-            fi
-            exit 0
-          fi
-          raw="${RUNNER_TEMP}/gdrive-credential"
-          printf '%s' "${GOOGLEDRIVE_AUTH_SECRET}" | base64 -d > "$raw" 2>/dev/null || :
-          if [ ! -s "$raw" ]; then
-            rm -f "$raw"
-            echo "::warning title=Google Drive auth unusable::GOOGLEDRIVE_AUTH did not base64-decode to anything. A serialized R token is binary; store it base64-encoded. Drive-backed tests will SKIP."
-            exit 0
-          fi
-          # Service accounts are NOT supported, and this is a hard failure
-          # rather than a warning. A service account has no Drive quota on
-          # user-owned folders: it authenticates cleanly and then cannot
-          # complete an upload round-trip, so upload-backed tests report zero
-          # coverage while everything stays green. That exact failure went
-          # undiagnosed for months. Refusing the credential outright is the
-          # only signal that cannot be mistaken for "no credential configured".
-          if grep -q '"service_account"' "$raw" 2>/dev/null; then
-            rm -f "$raw"
-            echo "::error title=Service-account credential rejected::GOOGLEDRIVE_AUTH holds a service-account key. Service accounts cannot upload to user-owned Drive folders. Replace the secret with a base64-encoded user OAuth token: saveRDS(googledrive::drive_token(), f) then base64 f."
-            exit 1
-          fi
-          # readRDS() accepts gzip (1f8b), bzip2 (425a), xz (fd37) or an
-          # uncompressed R serialization header (X/A/B followed by a newline).
-          magic="$(head -c 2 "$raw" | od -An -tx1 | tr -d ' \n')"
-          case "$magic" in
-            1f8b|425a|fd37|58*|41*|42*) ;;
-            *)
-              rm -f "$raw"
-              echo "::warning title=Google Drive auth unusable::GOOGLEDRIVE_AUTH did not decode to a serialized R token. Drive-backed tests will SKIP."
-              exit 0
-              ;;
-          esac
-          f="${RUNNER_TEMP}/google-oauth-token.rds"
-          mv "$raw" "$f"
-          echo "token-path=$f" >> "$GITHUB_OUTPUT"
-          echo "Staged Drive user OAuth token ($(wc -c < "$f") bytes) at $f"
+        uses: PredictiveEcology/actions/stage-gdrive-auth@main
+        with:
+          credential: ${{ secrets.GOOGLEDRIVE_AUTH }}
+          present: ${{ secrets.GOOGLEDRIVE_AUTH != '' }}
 
-      # Report, IN THE WORKFLOW LOG, whether the staged credential actually
-      # works and which identity it is.
-      #
-      # This cannot be left to the test suite. Drive tests skip when auth is
-      # unavailable, so a broken credential and an absent one look identical --
-      # and under covr it is worse: covr neither fails the build on a test
-      # failure nor prints a skip summary, so even a test written to fail loudly
-      # is silent here. A service-account key authenticated fine for months while
-      # being unable to upload (service accounts have no Drive quota on
-      # user-owned folders); the only symptom was a coverage number that quietly
-      # stayed flat, and diagnosing it took repeated 25-minute round-trips.
-      #
-      # Staging already proves the secret decoded. This proves it AUTHENTICATES,
-      # by making one real API call -- drive_has_token() is not enough, since it
-      # is TRUE for a scope-limited token that 403s on first use and for one
-      # whose refresh is broken.
-      #
-      # Never fails the build: it is a diagnostic, and a repo with no Drive
-      # credential is a normal, supported configuration.
       - name: Verify Google Drive credential
         if: steps.gdrive-auth.outputs.token-path != ''
         continue-on-error: true
