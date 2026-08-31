@@ -188,4 +188,7 @@ jobs:
         run: |
           gdal-config --version
           geos-config --version
-          proj --version
+          ## NOT `proj --version`: the proj CLI lives in proj-bin, which
+          ## libproj-dev does not pull in, and it is absent on the macOS runner
+          ## too. The .pc file ships with the -dev package on both.
+          pkg-config --modversion proj

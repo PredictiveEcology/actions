@@ -6,10 +6,14 @@ description: >-
   are REJECTED -- see the `credential` input.
 author: 'Alex Chubaty'
 
+## NOTE: do NOT write `${{ ... }}` anywhere in this file's descriptions.
+## GitHub evaluates expressions inside `description:` too, and `secrets` is not
+## a valid context in a composite action -- one such reference fails the whole
+## manifest to load, for every input, with "Unrecognized named-value".
 inputs:
   credential:
     description: >-
-      The raw secret value, i.e. `${{ secrets.GOOGLEDRIVE_AUTH }}`. Must be a
+      The raw secret value, i.e. `secrets.GOOGLEDRIVE_AUTH`. Must be a
       base64-encoded serialized R user OAuth token (`saveRDS` of a gargle/httr
       token). Base64 is required, not preferred: the token is binary, and a
       multi-line raw value is dropped by Windows runners.
@@ -22,7 +26,7 @@ inputs:
     default: ""
   present:
     description: >-
-      Single-line boolean, i.e. `${{ secrets.GOOGLEDRIVE_AUTH != '' }}`. Passed
+      Single-line boolean, i.e. `secrets.GOOGLEDRIVE_AUTH != ''`. Passed
       separately because it always survives the env boundary, which lets this
       action tell "no secret configured" (quiet, and normal on fork PRs) apart
       from "secret configured but dropped in transit" (warned). Without it the
@@ -45,7 +49,7 @@ runs:
     # `post-install` fetches from GitHub) and none of it needs this credential,
     # so callers must NOT put the secret in a job-level `env:`.
     #
-    # The secret reaches this script through `env:` rather than `${{ }}`
+    # The secret reaches this script through `env:` rather than expression
     # interpolation, so it is never pasted into the shell source. Only the
     # resulting PATH is handed onward.
     - name: Stage Google Drive credentials

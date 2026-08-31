@@ -134,9 +134,9 @@ runs:
         retry 5m  "sudo -E DEBIAN_FRONTEND=noninteractive apt-get update -y"
         retry 10m "sudo -E DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a \
                      apt-get install -y --no-install-recommends \
-                     libudunits2-dev libgdal-dev libgeos-dev libproj-dev libsqlite3-dev"
+                     pkg-config libudunits2-dev libgdal-dev libgeos-dev libproj-dev libsqlite3-dev"
         # Fail loudly rather than checking with silently different libraries.
-        gdal-config --version && geos-config --version && proj --version
+        gdal-config --version && geos-config --version && pkg-config --modversion proj
 
     - name: Install geospatial system dependencies (macOS)
       if: inputs.system-deps == 'true' && runner.os == 'macOS'
