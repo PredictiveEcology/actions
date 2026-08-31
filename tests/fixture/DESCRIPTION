@@ -1,0 +1,16 @@
+Package: fixturePkg
+Type: Package
+Title: Minimal Fixture Package for This Repository's Own CI
+Version: 0.0.1
+Authors@R: person("Predictive Ecology", role = c("aut", "cre"),
+                  email = "predictiveecology@gmail.com")
+Description: Not a real package and not published anywhere. It exists so the
+    self-test workflow has a DESCRIPTION to resolve dependencies against.
+    terra is in Imports deliberately: it links GDAL/GEOS/PROJ, so it is the
+    cheapest thing that fails when the geospatial system libraries are wrong.
+License: GPL-3
+Encoding: UTF-8
+Imports:
+    terra
+Suggests:
+    testthat (>= 3.0.0)

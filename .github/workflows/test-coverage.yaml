@@ -8,7 +8,7 @@
 #     pull_request: { branches: [main, development] }
 #   jobs:
 #     test-coverage:
-#       uses: PredictiveEcology/actions/.github/workflows/test-coverage.yaml@v0.4
+#       uses: PredictiveEcology/actions/.github/workflows/test-coverage.yaml@main
 #       ## Name the secrets you pass rather than using `secrets: inherit`.
 #       ## Both are optional; drop either line if unused.
 #       secrets:
@@ -135,35 +135,30 @@ jobs:
           set -euo pipefail
           if [ -z "${GOOGLEDRIVE_AUTH_SECRET:-}" ]; then
             if [ "${GOOGLEDRIVE_AUTH_PRESENT}" = "true" ]; then
-              echo "::warning title=Google Drive auth unavailable::GOOGLEDRIVE_AUTH is configured for this repository but arrived empty. Drive-backed tests will SKIP."
+              echo "::warning title=Google Drive auth unavailable::GOOGLEDRIVE_AUTH is configured for this repository but arrived empty on ${RUNNER_OS}. A serialized token is binary and MUST be stored base64-encoded; multi-line values are also dropped at the env: boundary on Windows runners. Drive-backed tests will SKIP."
             else
               echo "GOOGLEDRIVE_AUTH not configured; Drive-backed tests will skip."
             fi
             exit 0
           fi
           raw="${RUNNER_TEMP}/gdrive-credential"
-          case "$(printf '%s' "${GOOGLEDRIVE_AUTH_SECRET}" | head -c 64 | tr -d '[:space:]')" in
-            \{*) printf '%s' "${GOOGLEDRIVE_AUTH_SECRET}" > "$raw" ;;
-            *)   printf '%s' "${GOOGLEDRIVE_AUTH_SECRET}" | base64 -d > "$raw" 2>/dev/null || : ;;
-          esac
+          printf '%s' "${GOOGLEDRIVE_AUTH_SECRET}" | base64 -d > "$raw" 2>/dev/null || :
           if [ ! -s "$raw" ]; then
             rm -f "$raw"
-            echo "::warning title=Google Drive auth unusable::GOOGLEDRIVE_AUTH did not decode to anything. Drive-backed tests will SKIP."
+            echo "::warning title=Google Drive auth unusable::GOOGLEDRIVE_AUTH did not base64-decode to anything. A serialized R token is binary; store it base64-encoded. Drive-backed tests will SKIP."
             exit 0
           fi
-          # One secret, two possible credential types -- sniff which arrived and
-          # export a TYPED output so the R side never has to guess:
-          #   service-account JSON -> GOOGLEDRIVE_AUTH  (drive_auth(path=))
-          #   serialized R token   -> GDRIVE_OAUTH_TOKEN (drive_auth(token=))
-          # A user OAuth token is preferred: a service account has no Drive quota
-          # on user-owned folders, so it authenticates but cannot complete an
-          # upload round-trip, which silently leaves those tests uncovered.
+          # Service accounts are NOT supported, and this is a hard failure
+          # rather than a warning. A service account has no Drive quota on
+          # user-owned folders: it authenticates cleanly and then cannot
+          # complete an upload round-trip, so upload-backed tests report zero
+          # coverage while everything stays green. That exact failure went
+          # undiagnosed for months. Refusing the credential outright is the
+          # only signal that cannot be mistaken for "no credential configured".
           if grep -q '"service_account"' "$raw" 2>/dev/null; then
-            f="${RUNNER_TEMP}/google-sa.json"
-            mv "$raw" "$f"
-            echo "sa-path=$f" >> "$GITHUB_OUTPUT"
-            echo "Staged service-account JSON ($(wc -c < "$f") bytes) at $f"
-            exit 0
+            rm -f "$raw"
+            echo "::error title=Service-account credential rejected::GOOGLEDRIVE_AUTH holds a service-account key. Service accounts cannot upload to user-owned Drive folders. Replace the secret with a base64-encoded user OAuth token: saveRDS(googledrive::drive_token(), f) then base64 f."
+            exit 1
           fi
           # readRDS() accepts gzip (1f8b), bzip2 (425a), xz (fd37) or an
           # uncompressed R serialization header (X/A/B followed by a newline).
@@ -172,7 +167,7 @@ jobs:
             1f8b|425a|fd37|58*|41*|42*) ;;
             *)
               rm -f "$raw"
-              echo "::warning title=Google Drive auth unusable::GOOGLEDRIVE_AUTH decoded to neither service-account JSON nor a serialized R token. Drive-backed tests will SKIP."
+              echo "::warning title=Google Drive auth unusable::GOOGLEDRIVE_AUTH did not decode to a serialized R token. Drive-backed tests will SKIP."
               exit 0
               ;;
           esac
@@ -201,21 +196,19 @@ jobs:
       # Never fails the build: it is a diagnostic, and a repo with no Drive
       # credential is a normal, supported configuration.
       - name: Verify Google Drive credential
-        if: steps.gdrive-auth.outputs.token-path != '' || steps.gdrive-auth.outputs.sa-path != ''
+        if: steps.gdrive-auth.outputs.token-path != ''
         continue-on-error: true
         env:
-          GOOGLEDRIVE_AUTH: ${{ steps.gdrive-auth.outputs.sa-path }}
           GDRIVE_OAUTH_TOKEN: ${{ steps.gdrive-auth.outputs.token-path }}
         run: |
           Rscript -e '
             if (!requireNamespace("googledrive", quietly = TRUE)) {
               cat("googledrive not installed; skipping credential verification\n"); quit(save = "no")
             }
-            tp <- Sys.getenv("GDRIVE_OAUTH_TOKEN"); sp <- Sys.getenv("GOOGLEDRIVE_AUTH")
-            kind <- if (nzchar(tp)) "user OAuth token" else "service account"
-            cat("credential type:", kind, "\n")
+            tp <- Sys.getenv("GDRIVE_OAUTH_TOKEN")
+            if (!nzchar(tp)) { cat("no Drive credential staged\n"); quit(save = "no") }
             ok <- tryCatch({
-              if (nzchar(tp)) {
+              {
                 tok <- readRDS(tp)
                 # A gargle token carries the cache_path it was MINTED with (e.g.
                 # ~/.secret). drive_auth() writes the refreshed token back there;
@@ -225,7 +218,7 @@ jobs:
                 # helpers do, so this step reports the credential and not that.
                 tok$cache_path <- NULL
                 googledrive::drive_auth(token = tok)
-              } else            googledrive::drive_auth(path = sp)
+              }
               TRUE
             }, error = function(e) { cat("AUTH FAILED:", conditionMessage(e), "\n"); FALSE })
             if (!ok) quit(save = "no")
@@ -234,17 +227,14 @@ jobs:
             cat("identity:", who, "\n")
             if (startsWith(who, "ERROR:")) {
               cat("::warning title=Drive credential unusable::Authenticated, but the first API call failed. Drive-backed tests will produce no coverage.\n")
-            } else if (grepl("gserviceaccount", who)) {
-              cat("::warning title=Drive credential is a service account::Service accounts have no Drive quota on user-owned folders, so upload/round-trip tests cannot pass and the cloud code paths will report zero coverage.\n")
             }
           '
 
       - name: Test coverage
         env:
-          # Exactly one of these is non-empty, depending on which credential
-          # type GOOGLEDRIVE_AUTH held. Both empty -> the R side skips, as it
-          # does locally.
-          GOOGLEDRIVE_AUTH: ${{ steps.gdrive-auth.outputs.sa-path }}
+          # Path to the staged user OAuth token, or empty -> the R side skips,
+          # as it does locally. GOOGLEDRIVE_AUTH is deliberately NOT exported:
+          # it was the service-account path, and those are no longer accepted.
           GDRIVE_OAUTH_TOKEN: ${{ steps.gdrive-auth.outputs.token-path }}
           # Ceiling for the tmux-wrapped run; baseline is ~15 min.
           TMUX_COVR_TIMEOUT: "3600"

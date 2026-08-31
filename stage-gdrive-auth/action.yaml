@@ -1,22 +1,23 @@
 name: 'stage-gdrive-auth'
 description: >-
-  Decode a GOOGLEDRIVE_AUTH secret onto the runner and report which credential
-  type arrived, as typed step outputs. Does nothing (and never fails) when the
-  secret is absent, which is the normal case on fork PRs.
+  Decode a GOOGLEDRIVE_AUTH secret holding a user OAuth token onto the runner
+  and report its path as a step output. Does nothing (and never fails) when the
+  secret is absent, which is the normal case on fork PRs. Service-account keys
+  are REJECTED -- see the `credential` input.
 author: 'Alex Chubaty'
 
 inputs:
   credential:
     description: >-
-      The raw secret value, i.e. `${{ secrets.GOOGLEDRIVE_AUTH }}`. Either a
-      service-account key (JSON) or a serialized R user OAuth token (saveRDS of
-      a gargle/httr token). Base64-encoded is preferred -- a multi-line raw
-      value is dropped by Windows runners -- but raw service-account JSON is
-      also accepted. A token MUST be base64; it is binary.
+      The raw secret value, i.e. `${{ secrets.GOOGLEDRIVE_AUTH }}`. Must be a
+      base64-encoded serialized R user OAuth token (`saveRDS` of a gargle/httr
+      token). Base64 is required, not preferred: the token is binary, and a
+      multi-line raw value is dropped by Windows runners.
 
-      Prefer a user OAuth token: a service account has no Drive quota on
-      user-owned folders, so it authenticates but cannot complete an upload
-      round-trip, which silently leaves those tests uncovered.
+      Service-account keys are rejected outright. A service account has no
+      Drive quota on user-owned folders, so it authenticates cleanly and then
+      cannot complete an upload round-trip -- upload-backed tests report zero
+      coverage while the job stays green.
     required: false
     default: ""
   present:
@@ -30,11 +31,6 @@ inputs:
     default: "false"
 
 outputs:
-  sa-path:
-    description: >-
-      Path to the staged service-account JSON, or empty. Pass to the check step
-      as GOOGLEDRIVE_AUTH; the R side gives it to `drive_auth(path = )`.
-    value: ${{ steps.stage.outputs.sa-path }}
   token-path:
     description: >-
       Path to the staged serialized R token, or empty. Pass to the check step as
@@ -69,25 +65,22 @@ runs:
           exit 0
         fi
         raw="${RUNNER_TEMP}/gdrive-credential"
-        # A value whose first non-space character is `{` is raw JSON; anything
-        # else is treated as base64.
-        case "$(printf '%s' "${GOOGLEDRIVE_AUTH_SECRET}" | head -c 64 | tr -d '[:space:]')" in
-          \{*) printf '%s' "${GOOGLEDRIVE_AUTH_SECRET}" > "$raw" ;;
-          *)   printf '%s' "${GOOGLEDRIVE_AUTH_SECRET}" | base64 -d > "$raw" 2>/dev/null || : ;;
-        esac
+        printf '%s' "${GOOGLEDRIVE_AUTH_SECRET}" | base64 -d > "$raw" 2>/dev/null || :
         if [ ! -s "$raw" ]; then
           rm -f "$raw"
-          echo "::warning title=Google Drive auth unusable::GOOGLEDRIVE_AUTH did not decode to anything. Drive-backed tests will SKIP."
+          echo "::warning title=Google Drive auth unusable::GOOGLEDRIVE_AUTH did not base64-decode to anything. A serialized R token is binary; store it base64-encoded. Drive-backed tests will SKIP."
           exit 0
         fi
-        # One secret, two possible credential types -- sniff which arrived and
-        # export a TYPED output so the R side never has to guess.
+        # Service accounts are rejected, and this is a HARD failure rather than
+        # a warning. A service account authenticates cleanly and then cannot
+        # upload to user-owned folders, so the cloud tests report zero coverage
+        # while everything stays green -- that went undiagnosed for months. A
+        # failed step is the only signal that cannot be mistaken for "no
+        # credential configured".
         if grep -q '"service_account"' "$raw" 2>/dev/null; then
-          f="${RUNNER_TEMP}/google-sa.json"
-          mv "$raw" "$f"
-          echo "sa-path=$f" >> "$GITHUB_OUTPUT"
-          echo "Staged service-account JSON ($(wc -c < "$f") bytes) at $f"
-          exit 0
+          rm -f "$raw"
+          echo "::error title=Service-account credential rejected::GOOGLEDRIVE_AUTH holds a service-account key. Service accounts cannot upload to user-owned Drive folders. Replace it with a base64-encoded user OAuth token: saveRDS(googledrive::drive_token(), f), then base64 f."
+          exit 1
         fi
         # readRDS() accepts gzip (1f8b), bzip2 (425a), xz (fd37) or an
         # uncompressed R serialization header (X/A/B followed by a newline).
@@ -96,7 +89,7 @@ runs:
           1f8b|425a|fd37|58*|41*|42*) ;;
           *)
             rm -f "$raw"
-            echo "::warning title=Google Drive auth unusable::GOOGLEDRIVE_AUTH decoded to neither service-account JSON nor a serialized R token. Drive-backed tests will SKIP."
+            echo "::warning title=Google Drive auth unusable::GOOGLEDRIVE_AUTH did not decode to a serialized R token. Drive-backed tests will SKIP."
             exit 0
             ;;
         esac

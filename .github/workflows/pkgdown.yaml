@@ -10,7 +10,7 @@
 #     workflow_dispatch:
 #   jobs:
 #     pkgdown:
-#       uses: PredictiveEcology/actions/.github/workflows/pkgdown.yaml@v0.4
+#       uses: PredictiveEcology/actions/.github/workflows/pkgdown.yaml@main
 #       ## No `secrets:` block needed -- this workflow uses only the automatic
 #       ## GITHUB_TOKEN. Drop any `secrets: inherit` a caller still has.
 #       with:

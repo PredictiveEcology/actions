@@ -8,7 +8,7 @@
 #     pull_request: { branches: [main, master, development] }
 #   jobs:
 #     R-CMD-check:
-#       uses: PredictiveEcology/actions/.github/workflows/R-CMD-check.yaml@v0.4
+#       uses: PredictiveEcology/actions/.github/workflows/R-CMD-check.yaml@main
 #       ## Name the secrets you pass. `secrets: inherit` also works, but hands
 #       ## this workflow EVERY secret the calling repo can see -- including to
 #       ## the third-party packages that `post-install` installs. Omit the block
@@ -147,10 +147,10 @@ jobs:
 
       - uses: r-lib/actions/check-r-package@v2
         env:
-          # Exactly one of these is non-empty, depending on which credential
-          # type GOOGLEDRIVE_AUTH held. Both empty -> the R side sees unset vars
-          # and skips, exactly as it does locally.
-          GOOGLEDRIVE_AUTH: ${{ steps.gdrive-auth.outputs.sa-path }}
+          # Path to the staged user OAuth token, or empty -> the R side sees an
+          # unset var and skips, exactly as it does locally. GOOGLEDRIVE_AUTH is
+          # deliberately NOT exported: that was the service-account path, and
+          # service accounts are no longer accepted.
           GDRIVE_OAUTH_TOKEN: ${{ steps.gdrive-auth.outputs.token-path }}
         with:
           upload-snapshots: true

@@ -193,6 +193,14 @@ runs:
     - name: Install R deps (retry fallback)
       if: steps.deps.outcome == 'failure'
       uses: nick-fields/retry@v3
+      env:
+        # Routed through env: rather than interpolated into the command, so a
+        # quote or newline in an input cannot break (or extend) the shell line.
+        # Same discipline as stage-gdrive-auth. `dependencies` is an R
+        # EXPRESSION by contract, so it is eval-parsed, not treated as a string.
+        SRD_WORKDIR: ${{ inputs.working-directory }}
+        SRD_DEPENDENCIES: ${{ inputs.dependencies }}
+        SRD_EXTRA_PACKAGES: ${{ inputs.extra-packages }}
       with:
         timeout_minutes: 30
         max_attempts: 3
@@ -202,9 +210,10 @@ runs:
         command: |
           echo "::warning title=Dependency install fell back::setup-r-dependencies failed; retrying with pak directly. The resolved dependency set may differ from the primary path."
           Rscript -e 'install.packages("pak", repos = "https://r-lib.github.io/p/pak/stable/")' \
-                  -e 'setwd("${{ inputs.working-directory }}")' \
-                  -e 'pak::local_install_dev_deps(ask = FALSE, dependencies = (${{ inputs.dependencies }}))' \
-                  -e 'extra <- Filter(nzchar, trimws(strsplit("${{ inputs.extra-packages }}", "\n")[[1]]))' \
+                  -e 'setwd(Sys.getenv("SRD_WORKDIR"))' \
+                  -e 'deps <- eval(parse(text = Sys.getenv("SRD_DEPENDENCIES")))' \
+                  -e 'pak::local_install_dev_deps(ask = FALSE, dependencies = deps)' \
+                  -e 'extra <- Filter(nzchar, trimws(strsplit(Sys.getenv("SRD_EXTRA_PACKAGES"), "\n")[[1]]))' \
                   -e 'if (length(extra)) pak::pkg_install(extra, ask = FALSE)'
 
     - name: Install additional package dependencies
