@@ -91,76 +91,18 @@ runs:
     - if: inputs.pandoc == 'true' && steps.pandoc1.outcome == 'failure' && steps.pandoc2.outcome == 'failure'
       uses: r-lib/actions/setup-pandoc@v2
 
-    # Geospatial system deps WITHOUT the ubuntugis-unstable PPA. That PPA
-    # installs libgdal37 (GDAL 3.11.x), but Posit's noble binary cache builds
-    # quickPlot/sf/terra against the Ubuntu-default libgdal34 -- the ABI
-    # mismatch surfaces as `libgdal.so.34: cannot open shared object file` when
-    # quickPlot loads, and fails the whole check via a lazy-load.
+    # Delegated rather than reimplemented. This action and install-spatial-deps
+    # carried two copies of the same apt/brew/PROJ_DATA logic, which is how the
+    # ubuntugis PPA survived in one of them for months after the workflows had
+    # rejected it. One copy, one place to fix.
     #
-    # NOTE on timeouts: composite-action steps do NOT support `timeout-minutes`
-    # (actions/runner#1979 -- and it is not honoured on the step that *calls* a
-    # composite action either). Two independent Ubuntu-24.04 hangs are guarded
-    # here without it:
-    #  (1) apt's post-install needrestart/debconf can block on an interactive
-    #      prompt -> DEBIAN_FRONTEND=noninteractive / NEEDRESTART_MODE=a, passed
-    #      through `sudo -E`, which otherwise resets the environment.
-    #  (2) GitHub's azure.archive.ubuntu.com mirror intermittently returns Ign
-    #      and apt fails over to archive.ubuntu.com, but with no per-connection
-    #      timeout a stalled fetch hangs until the job's 6h ceiling. Observed
-    #      2026-08-19: two LandWebUtils jobs sat here for 6h0m and were killed.
-    #      Short acquire timeouts plus the GNU `timeout` wrapper below make a
-    #      dead connection abort in ~30s and fail over instead of hanging.
-    - name: Install geospatial system dependencies (Linux)
-      if: inputs.system-deps == 'true' && runner.os == 'Linux'
-      shell: bash
-      run: |
-        set -euo pipefail
-        printf 'Acquire::Retries "5";\nAcquire::http::Timeout "30";\nAcquire::https::Timeout "30";\n' \
-          | sudo tee /etc/apt/apt.conf.d/99-ci-timeouts > /dev/null
-        # GNU timeout stands in for the unsupported `timeout-minutes`, and gives
-        # a per-command cap rather than one cap for the whole step.
-        retry() {
-          local n
-          for n in 1 2 3; do
-            if timeout --kill-after=60s "$1" bash -c "$2"; then
-              return 0
-            fi
-            echo "::warning::'$2' failed or timed out (attempt $n/3); retrying..."
-            sleep $((n * 15))
-          done
-          echo "::error::'$2' still failing after 3 attempts"
-          return 1
-        }
-        retry 5m  "sudo -E DEBIAN_FRONTEND=noninteractive apt-get update -y"
-        retry 10m "sudo -E DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a \
-                     apt-get install -y --no-install-recommends \
-                     pkg-config libudunits2-dev libgdal-dev libgeos-dev libproj-dev libsqlite3-dev"
-        # Fail loudly rather than checking with silently different libraries.
-        gdal-config --version && geos-config --version && pkg-config --modversion proj
-
-    - name: Install geospatial system dependencies (macOS)
-      if: inputs.system-deps == 'true' && runner.os == 'macOS'
-      shell: bash
-      run: |
-        set -euo pipefail
-        brew install pkg-config gdal
-
-    # Homebrew's gdal/proj install does not always leave proj.db on PROJ's
-    # default search path. Without it, terra::project()/terra::crs() emit
-    # "PROJ: proj_identify: Cannot find proj.db (GDAL error 1)" and any
-    # reprojection-touching test fails.
-    - name: Configure PROJ data path (macOS)
-      if: inputs.system-deps == 'true' && runner.os == 'macOS'
-      shell: bash
-      run: |
-        PROJ_PREFIX="$(brew --prefix proj 2>/dev/null || true)"
-        PROJ_DATA="$PROJ_PREFIX/share/proj"
-        if [ ! -d "$PROJ_DATA" ]; then PROJ_DATA="/opt/homebrew/share/proj"; fi
-        if [ ! -d "$PROJ_DATA" ]; then PROJ_DATA="/usr/local/share/proj"; fi
-        echo "PROJ_DATA=$PROJ_DATA" >> "$GITHUB_ENV"
-        echo "PROJ_LIB=$PROJ_DATA"  >> "$GITHUB_ENV"
-        echo "Using PROJ_DATA=$PROJ_DATA"
-        ls -1 "$PROJ_DATA" | head -5 || true
+    # Referenced by full name, NOT `./install-spatial-deps`: inside a composite
+    # action a relative `uses:` resolves against GITHUB_WORKSPACE -- the calling
+    # repository's checkout -- so the relative form works only when the caller
+    # happens to be this repo, and breaks every real consumer.
+    - name: Install geospatial system dependencies
+      if: inputs.system-deps == 'true'
+      uses: PredictiveEcology/actions/install-spatial-deps@main
 
     - uses: r-lib/actions/setup-r@v2
       with:
