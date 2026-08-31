@@ -44,16 +44,26 @@ on:
         type: boolean
         default: false
 
+      extra-env:
+        description: >-
+          Extra environment variables for the whole job, as newline-separated
+          KEY=VALUE lines (blank lines and #-comments ignored). Applied before
+          anything is installed, so it reaches dependency resolution as well as
+          the check. Exists because per-package CI legitimately needs env this
+          workflow cannot enumerate -- OMP_THREAD_LIMIT, R_KEEP_PKG_SOURCE,
+          _R_CHECK_THINGS_IN_OTHER_DIRS_ -- and without it those packages
+          cannot move off their own workflows without silently losing settings.
+        type: string
+        default: ""
     secrets:
       GOOGLEDRIVE_AUTH:
         description: >-
-          Google Drive credential, either a service-account key (JSON) or a
-          serialized R user OAuth token (saveRDS of a gargle/httr token).
-          Base64-encoded is preferred; raw service-account JSON is also
-          accepted, but a token MUST be base64 (it is binary). The type is
-          detected at staging time. A user OAuth token is preferred: a service
-          account has no Drive quota on user-owned folders, so it can
-          authenticate but cannot complete an upload round-trip. Optional --
+          Google Drive credential: a base64-encoded serialized R user OAuth
+          token (saveRDS of a gargle/httr token). Base64 is required, not
+          preferred -- the token is binary, and a multi-line raw value is
+          dropped by Windows runners. Service-account keys are REJECTED: a
+          service account has no Drive quota on user-owned folders, so it
+          authenticates but cannot complete an upload round-trip. Optional --
           Drive-backed tests skip without it.
         required: false
       CODECOV_TOKEN:
@@ -71,6 +81,26 @@ jobs:
 
     steps:
       - uses: actions/checkout@v7
+
+      # Applied before setup-r-deps so it reaches dependency resolution too,
+      # not just the check. See the extra-env input for why this exists.
+      - name: Apply caller-supplied environment
+        if: inputs.extra-env != ''
+        shell: bash
+        env:
+          EXTRA_ENV: ${{ inputs.extra-env }}
+        run: |
+          set -euo pipefail
+          printf '%s\n' "$EXTRA_ENV" | while IFS= read -r line; do
+            [ -z "$(printf '%s' "$line" | tr -d '[:space:]')" ] && continue
+            case "$line" in
+              \#*) continue ;;
+              *=*) ;;
+              *) echo "::error::extra-env expects KEY=VALUE per line, got: $line"; exit 1 ;;
+            esac
+            printf '%s\n' "$line" >> "$GITHUB_ENV"
+            echo "  set ${line%%=*}"
+          done
 
       - uses: r-lib/actions/setup-pandoc@v2
 
