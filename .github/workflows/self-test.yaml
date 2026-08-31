@@ -62,6 +62,37 @@ jobs:
           ## self-test cache can never be handed to a real package's build.
           cache-version: self-test-1
           extra-packages: any::sessioninfo
+          ## `needs` is what pkgdown.yaml relies on to get Config/Needs/website
+          ## installed. An unknown input to a composite action is a WARNING,
+          ## not an error, so a rename or typo here would show up as a pkgdown
+          ## build mysteriously missing its tooling rather than as a red step.
+          ## The fixture declares Config/Needs/self-test: abind -- deliberately
+          ## a package that is in nothing else's dependency closure, so its
+          ## presence below can only have come through this input.
+          needs: self-test
+          ## The contract for pre-install is that it runs after setup-r and
+          ## BEFORE dependency resolution. That window is the only reason
+          ## test-downstream.yaml can strip a downstream's `Remotes:` pin; if
+          ## the step ever drifted after the install, that workflow would go
+          ## back to silently checking the wrong code.
+          pre-install: |
+            notYet <- c("terra", "sessioninfo", "abind")
+            already <- notYet[vapply(notYet, function(p)
+              nzchar(system.file(package = p)), logical(1))]
+            if (length(already))
+              stop("pre-install ran AFTER the dependency install; found: ",
+                   paste(already, collapse = ", "))
+            writeLines("ran", "pre-install-ran.txt")
+
+      - name: Assert the setup-r-deps hooks did their job
+        shell: Rscript {0}
+        run: |
+          if (!file.exists("pre-install-ran.txt"))
+            stop("pre-install did not run at all")
+          ## Only `needs: self-test` can have pulled this in.
+          if (!nzchar(system.file(package = "abind")))
+            stop("`needs` was not forwarded to setup-r-dependencies")
+          cat("pre-install and needs both OK\n")
 
       ## `gdal-config --version` inside the action proves the HEADERS are
       ## present. Only a load proves the ABI matches -- and an ABI mismatch is

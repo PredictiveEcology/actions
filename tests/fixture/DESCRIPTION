@@ -8,9 +8,14 @@ Description: Not a real package and not published anywhere. It exists so the
     self-test workflow has a DESCRIPTION to resolve dependencies against.
     terra is in Imports deliberately: it links GDAL/GEOS/PROJ, so it is the
     cheapest thing that fails when the geospatial system libraries are wrong.
+    abind sits under Config/Needs/self-test for a similar reason: it is in
+    nothing else's dependency closure here, so its presence proves setup-r-deps
+    forwarded its `needs` input, and its absence proves it did not.
 License: GPL-3
 Encoding: UTF-8
 Imports:
     terra
 Suggests:
     testthat (>= 3.0.0)
+Config/Needs/self-test:
+    abind
