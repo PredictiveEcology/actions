@@ -44,7 +44,13 @@ on:
         type: string
         default: 'c("--no-manual", "--as-cran")'
       extra-config:
-        description: "Extra matrix legs appended via `include` (JSON array of {config:{...}} objects). Default none. E.g. '[{\"config\":{\"os\":\"windows-latest\",\"nosuggests\":false,\"r\":\"oldrel-2\"}}]' to also test an older R."
+        description: >-
+          Extra matrix legs appended via `include` (JSON array of {config:{...}}
+          objects). Default none. E.g.
+          '[{"config":{"os":"windows-latest","nosuggests":false,"r":"oldrel-2"}}]'
+          to also test an older R. A leg may also carry an `extra-env` key, in
+          the same KEY=VALUE format as the workflow-level input, to set
+          environment for that leg only.
         type: string
         default: "[]"
       cache-version:
@@ -132,13 +138,19 @@ jobs:
       # Applied before setup-r-deps so it reaches dependency resolution too,
       # not just the check. See the extra-env input for why this exists.
       - name: Apply caller-supplied environment
-        if: inputs.extra-env != ''
+        if: inputs.extra-env != '' || matrix.config.extra-env != ''
         shell: bash
         env:
           EXTRA_ENV: ${{ inputs.extra-env }}
+          # Per-leg env, set by an extra-config entry. Applied after the
+          # workflow-wide block, so a leg can override it. This is what lets a
+          # caller vary env across the matrix -- e.g. Require gates its slow
+          # tests on one leg via R_REQUIRE_RUN_LONG_CI -- which a single static
+          # input cannot express.
+          MATRIX_ENV: ${{ matrix.config.extra-env }}
         run: |
           set -euo pipefail
-          printf '%s\n' "$EXTRA_ENV" | while IFS= read -r line; do
+          printf '%s\n%s\n' "$EXTRA_ENV" "${MATRIX_ENV:-}" | while IFS= read -r line; do
             [ -z "$(printf '%s' "$line" | tr -d '[:space:]')" ] && continue
             case "$line" in
               \#*) continue ;;
