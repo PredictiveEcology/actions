@@ -57,8 +57,13 @@
 - **all four reusable workflows now declare `permissions:`.** They previously
   declared none, so a caller whose repository default is read/write handed them
   — and every third-party package they install — a writable `GITHUB_TOKEN`.
-  Three are `read-all` (matching r-lib/actions' own templates); `pkgdown`'s job
-  takes `contents: write`, which its gh-pages deploy genuinely needs;
+  Three take `contents: read`; `pkgdown`'s job takes `contents: write`, which
+  its gh-pages deploy genuinely needs. Deliberately **not** r-lib/actions'
+  `read-all`: a called workflow that requests more than the caller's job
+  granted fails *validation*, before the run starts, and `SpaDES.tools`' thin
+  callers grant exactly `contents: read` on top of a file-level
+  `permissions: {}`. Note that a caller whose job grants nothing at all now
+  fails up front rather than at the step that needed the token;
 - **`install-spatial-deps` now documents why it still exists**, in both the
   action and its README: the SpaDES *module* repositories have no `DESCRIPTION`
   (dependencies live in `defineModule(reqdPkgs = ...)`) and install via

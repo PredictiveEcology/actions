@@ -114,11 +114,22 @@ on:
           Drive-backed tests skip without it.
         required: false
 
-## Read-only, matching r-lib/actions' own check templates. The checkout and the
-## snapshot/artifact uploads need nothing more; without a block here a caller
-## whose repository default is read/write hands this workflow -- and every
-## third-party package `post-install` installs -- a writable GITHUB_TOKEN.
-permissions: read-all
+## The checkout and the snapshot/artifact uploads need nothing more (artifact
+## upload authenticates with ACTIONS_RUNTIME_TOKEN).
+## Least privilege, and no more than that. NOT `read-all` (which is what
+## r-lib/actions' own templates use): a called workflow whose `permissions:`
+## request exceeds what the caller's job granted fails VALIDATION, before the
+## run starts -- "The workflow is requesting 'actions: read', but is only
+## allowed 'actions: none'." SpaDES.tools' callers grant exactly
+## `contents: read` on top of a file-level `permissions: {}`, so `read-all`
+## would have taken those workflows down on merge. `contents: read` is what
+## the checkout needs and is a subset of every current caller's grant.
+##
+## Without a block here a caller that declares nothing -- most of them -- hands
+## this workflow, and every third-party package it installs, whatever the
+## repository default is, which for these repos is read/write.
+permissions:
+  contents: read
 
 jobs:
   R-CMD-check:
