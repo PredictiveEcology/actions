@@ -172,6 +172,15 @@ jobs:
   ## install-spatial-deps has its own consumers (NetLogoR at @main; LandR, map
   ## and SpaDES.shiny on old tags), so it needs covering independently of
   ## setup-r-deps.
+  ##
+  ## Linux only, deliberately. Its macOS branch is character-for-character the
+  ## same `brew install pkg-config gdal` + PROJ_DATA pair that setup-r-deps
+  ## runs, and that brew install pulls ~3GB (llvm, gcc, boost, aws-sdk-cpp) for
+  ## ~200s. macOS runners bill at 10x, so a second copy cost more than every
+  ## Linux job here combined while proving nothing the setup-r-deps macOS leg
+  ## does not already prove. Once setup-r-deps calls this action instead of
+  ## reimplementing it, the duplication is gone and this stays correct; until
+  ## then the two are verified identical by inspection.
   install-spatial-deps:
     name: install-spatial-deps (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
@@ -179,7 +188,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macOS-latest]
+        os: [ubuntu-latest]
     steps:
       - uses: actions/checkout@v7
       - uses: ./install-spatial-deps
