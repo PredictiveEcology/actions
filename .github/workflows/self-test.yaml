@@ -173,14 +173,15 @@ jobs:
   ## and SpaDES.shiny on old tags), so it needs covering independently of
   ## setup-r-deps.
   ##
-  ## Linux only, deliberately. Its macOS branch is character-for-character the
-  ## same `brew install pkg-config gdal` + PROJ_DATA pair that setup-r-deps
-  ## runs, and that brew install pulls ~3GB (llvm, gcc, boost, aws-sdk-cpp) for
-  ## ~200s. macOS runners bill at 10x, so a second copy cost more than every
-  ## Linux job here combined while proving nothing the setup-r-deps macOS leg
-  ## does not already prove. Once setup-r-deps calls this action instead of
-  ## reimplementing it, the duplication is gone and this stays correct; until
-  ## then the two are verified identical by inspection.
+  ## Linux only, deliberately. setup-r-deps now delegates its spatial setup to
+  ## this action, so the setup-r-deps (macOS) leg already exercises this action's
+  ## macOS branch -- there is one implementation, not two that happen to match.
+  ## A second macOS leg would re-run a ~3GB brew install (llvm, gcc, boost,
+  ## aws-sdk-cpp, ~200s) at the 10x macOS billing rate to prove the same thing.
+  ##
+  ## Caveat: because setup-r-deps references this action at @main, the
+  ## setup-r-deps legs test main's copy, not the branch's. Changes to this
+  ## action are covered by THIS job, which uses the local path.
   install-spatial-deps:
     name: install-spatial-deps (${{ matrix.os }})
     runs-on: ${{ matrix.os }}

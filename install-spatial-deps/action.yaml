@@ -20,7 +20,7 @@ runs:
           retry() {
             local n
             for n in 1 2 3; do
-              if timeout "$1" bash -c "$2"; then
+              if timeout --kill-after=60s "$1" bash -c "$2"; then
                 return 0
               fi
               echo "::warning::'$2' failed or timed out (attempt $n/3); retrying..."
