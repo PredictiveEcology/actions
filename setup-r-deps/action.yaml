@@ -2,10 +2,10 @@ name: 'setup-r-deps'
 description: >-
   Everything needed to get an R package's dependencies installed the
   PredictiveEcology way: pandoc, geospatial system libraries, R itself, and the
-  dependency install with a retry fallback. Extracted from the R-CMD-check
-  reusable workflow so a job that is NOT running R CMD check -- a benchmark, an
-  ad-hoc matrix leg, a coverage run with different flags -- can reuse it
-  without inheriting the check.
+  dependency install. Extracted from the R-CMD-check reusable workflow so a job
+  that is NOT running R CMD check -- a benchmark, an ad-hoc matrix leg, a
+  coverage run with different flags -- can reuse it without inheriting the
+  check. All four reusable workflows in this repository go through it.
 author: 'Alex Chubaty'
 
 inputs:
@@ -22,6 +22,13 @@ inputs:
     default: '"all"'
   extra-packages:
     description: "Packages appended to setup-r-dependencies `extra-packages` (newline-separated)."
+    required: false
+    default: ""
+  needs:
+    description: >-
+      `Config/Needs/<field>` entries to install as well, passed straight to
+      setup-r-dependencies' `needs`. `website` is what a pkgdown build wants;
+      most jobs want nothing.
     required: false
     default: ""
   pak-version:
@@ -66,6 +73,18 @@ inputs:
       Set false for a pure-R package.
     required: false
     default: "true"
+  pre-install:
+    description: >-
+      Optional Rscript run after R is set up but BEFORE the dependency install.
+      Exists for test-downstream.yaml, which must rewrite the downstream
+      package's `Remotes:` field in exactly that window: any earlier and there
+      is no R to rewrite the DESCRIPTION with, any later and pak has already
+      resolved the pinned upstream from GitHub. The script reads its inputs
+      from the job environment (e.g. a value written to `$GITHUB_ENV` by an
+      earlier step) -- a composite action's steps do not see the caller's
+      step-level `env:`.
+    required: false
+    default: ""
   post-install:
     description: "Optional Rscript run after the dependency install (e.g. NLMR/fastshp)."
     required: false
@@ -111,6 +130,11 @@ runs:
         Ncpus: ${{ inputs.ncpus }}
         use-public-rspm: ${{ inputs.use-public-rspm }}
 
+    - name: Prepare the package sources before dependency resolution
+      if: inputs.pre-install != ''
+      shell: Rscript {0}
+      run: ${{ inputs.pre-install }}
+
     # Install everything, Suggests included. Skipping Suggests looks like a free
     # saving on a no-suggests leg, but that leg's guarantee comes from
     # _R_CHECK_DEPENDS_ONLY_=true, which makes R build its own restricted
@@ -118,45 +142,30 @@ runs:
     # the test driver calls `library(testthat)` unconditionally and testthat is
     # a Suggests, so dropping them kills the leg before any check output exists.
     # See PredictiveEcology/actions#21.
-    - id: deps
-      continue-on-error: true
-      uses: r-lib/actions/setup-r-dependencies@v2
+    #
+    # No retry wrapper, and no `continue-on-error`, deliberately. What used to
+    # follow this step was never a retry: the primary path is
+    # `pak::lockfile_install()` (upgrade = FALSE), while the fallback called
+    # `pak::local_install_dev_deps()`, whose default is upgrade = TRUE -- so it
+    # bypassed both the lockfile and the cache and resolved a MORE aggressive
+    # set than the one that had just failed. Combined with
+    # `continue-on-error: true` here, a genuinely broken dependency bought ~90
+    # minutes of futile reinstallation instead of an immediate red.
+    #
+    # It is also unnecessary now. pak retries failed HTTP requests by default
+    # (pak 0.11.0 NEWS: exponential backoff, honouring `Retry-After`, and
+    # covering every request -- package downloads included, not just metadata),
+    # and `pak-version` defaults to `stable`, i.e. the current CRAN release
+    # (0.11.1, 2026-07-22). The transient network failure this was written for
+    # is now handled one layer down, where it belongs.
+    - uses: r-lib/actions/setup-r-dependencies@v2
       with:
         pak-version: ${{ inputs.pak-version }}
         cache-version: ${{ inputs.cache-version }}
         dependencies: ${{ inputs.dependencies }}
         working-directory: ${{ inputs.working-directory }}
         extra-packages: ${{ inputs.extra-packages }}
-
-    # Fallback when setup-r-dependencies fails (most often a transient
-    # binary-fetch failure under pak). This mirrors the primary step's
-    # `dependencies` and `extra-packages` rather than silently checking a
-    # narrower set, which is what the previous inline version did.
-    - name: Install R deps (retry fallback)
-      if: steps.deps.outcome == 'failure'
-      uses: nick-fields/retry@v3
-      env:
-        # Routed through env: rather than interpolated into the command, so a
-        # quote or newline in an input cannot break (or extend) the shell line.
-        # Same discipline as stage-gdrive-auth. `dependencies` is an R
-        # EXPRESSION by contract, so it is eval-parsed, not treated as a string.
-        SRD_WORKDIR: ${{ inputs.working-directory }}
-        SRD_DEPENDENCIES: ${{ inputs.dependencies }}
-        SRD_EXTRA_PACKAGES: ${{ inputs.extra-packages }}
-      with:
-        timeout_minutes: 30
-        max_attempts: 3
-        retry_wait_seconds: 60
-        retry_on: error
-        shell: bash
-        command: |
-          echo "::warning title=Dependency install fell back::setup-r-dependencies failed; retrying with pak directly. The resolved dependency set may differ from the primary path."
-          Rscript -e 'install.packages("pak", repos = "https://r-lib.github.io/p/pak/stable/")' \
-                  -e 'setwd(Sys.getenv("SRD_WORKDIR"))' \
-                  -e 'deps <- eval(parse(text = Sys.getenv("SRD_DEPENDENCIES")))' \
-                  -e 'pak::local_install_dev_deps(ask = FALSE, dependencies = deps)' \
-                  -e 'extra <- Filter(nzchar, trimws(strsplit(Sys.getenv("SRD_EXTRA_PACKAGES"), "\n")[[1]]))' \
-                  -e 'if (length(extra)) pak::pkg_install(extra, ask = FALSE)'
+        needs: ${{ inputs.needs }}
 
     - name: Install additional package dependencies
       if: inputs.post-install != ''
