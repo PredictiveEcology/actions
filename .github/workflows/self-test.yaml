@@ -202,3 +202,166 @@ jobs:
           ## libproj-dev does not pull in, and it is absent on the macOS runner
           ## too. The .pc file ships with the -dev package on both.
           pkg-config --modversion proj
+
+  ## The three legacy `install-*` actions sat in this workflow's `paths:`
+  ## filter with no job behind them: editing one fired self-test, self-test ran
+  ## setup-r-deps / stage-gdrive-auth / install-spatial-deps instead, and the
+  ## green check meant "not tested". These three jobs close that gap.
+  ##
+  ## Linux only, deliberately. `Require::setLinuxBinaryRepo()` -- the first
+  ## statement of two of the three actions -- is a no-op off Ubuntu/Debian
+  ## (`isUbuntuOrDebian()`), and every consumer of these actions in the org
+  ## runs `ubuntu-latest`.
+  ##
+  ## `GITHUB_PAT` is set per job because all three install from GitHub via
+  ## remotes/Require: unauthenticated api.github.com calls are rate-limited per
+  ## IP and runner IPs are shared. The workflow-level `permissions: contents:
+  ## read` keeps the token read-only.
+  install-Require:
+    name: install-Require
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          use-public-rspm: true
+          Ncpus: 2
+
+      ## No `with:` -- this leg exercises the DEFAULT GitTag, which is the half
+      ## that rotted unnoticed. It was `master`, and PredictiveEcology/Require
+      ## has no `master` branch and no `master` tag (`git ls-remote` lists
+      ## neither), so the documented default resolved to a hard
+      ## `install_github` failure for anyone who took it at its word.
+      - uses: ./install-Require
+
+      - name: Assert the default GitTag resolved to development
+        shell: Rscript {0}
+        run: |
+          for (p in c("remotes", "Require")) {
+            if (!nzchar(system.file(package = p))) stop(p, " was not installed")
+            cat(p, as.character(packageVersion(p)), "\n")
+          }
+          ## remotes stamps the ref it resolved into the installed DESCRIPTION,
+          ## so this asserts WHICH Require landed, not merely that some did.
+          ref <- packageDescription("Require")$RemoteRef
+          cat("RemoteRef:", ref, "\n")
+          if (!identical(ref, "development")) {
+            stop("the default GitTag installed '", ref, "', expected 'development'")
+          }
+          ## install-Rmd-pkgs and install-SpaDES both open with this call, so
+          ## its removal from Require would break those two actions and not
+          ## this one. Catch it here, where the message is legible.
+          if (!is.function(Require::setLinuxBinaryRepo)) {
+            stop("Require no longer exports setLinuxBinaryRepo()")
+          }
+
+      ## ...and this leg proves the input is honoured rather than ignored.
+      - uses: ./install-Require
+        with:
+          GitTag: main
+
+      - name: Assert an explicit GitTag is honoured
+        shell: Rscript {0}
+        run: |
+          ref <- packageDescription("Require")$RemoteRef
+          cat("RemoteRef:", ref, "\n")
+          if (!identical(ref, "main")) {
+            stop("GitTag: main installed '", ref, "'")
+          }
+
+  ## install-Rmd-pkgs and install-SpaDES carry an ordering dependency that an
+  ## action cannot declare: both call `Require::setLinuxBinaryRepo()` as their
+  ## first statement, so they die with "there is no package called 'Require'"
+  ## unless install-Require ran earlier in the SAME job. That is not
+  ## hypothetical -- SpaDES.core's own `render-module-rmd.yaml.template` calls
+  ## install-Rmd-pkgs before install-Require. These jobs encode the order that
+  ## actually works, and are where a regression in it would surface.
+  install-Rmd-pkgs:
+    name: install-Rmd-pkgs
+    runs-on: ubuntu-latest
+    ## ~8 packages plus their trees. Posit's Linux binaries are the fast path;
+    ## a source fallback is what makes this slow when it is slow.
+    timeout-minutes: 45
+    env:
+      GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          use-public-rspm: true
+          Ncpus: 2
+
+      - uses: ./install-Require
+      - uses: ./install-Rmd-pkgs
+
+      - name: Assert every advertised package is installed
+        shell: Rscript {0}
+        run: |
+          pkgs <- c("bookdown", "rmarkdown", "knitr",
+                    "git2r", "kableExtra", "openxlsx", "pander",
+                    "SpaDES.docs")
+          have <- vapply(pkgs, function(p) nzchar(system.file(package = p)), logical(1))
+          print(data.frame(package = pkgs, installed = have, row.names = NULL))
+          if (any(!have)) {
+            stop("install-Rmd-pkgs did not install: ",
+                 paste(pkgs[!have], collapse = ", "))
+          }
+          ## Loading is the stronger assertion, but git2r's binary needs
+          ## libgit2 at run time and the runner image does not ship it -- the
+          ## org's module template apt-installs libgit2-dev for exactly that
+          ## reason. Everything else must load.
+          for (p in setdiff(pkgs, "git2r")) loadNamespace(p)
+          cat("all loaded\n")
+
+  install-SpaDES:
+    name: install-SpaDES
+    runs-on: ubuntu-latest
+    ## The metapackage pulls SpaDES.core / SpaDES.tools / reproducible /
+    ## quickPlot and their trees, and SpaDES.experiment builds from source.
+    timeout-minutes: 75
+    env:
+      GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v7
+
+      ## Binaries are the fast path, but any source fallback in this tree
+      ## (terra, sf, ...) needs the GDAL/GEOS/PROJ headers.
+      - uses: ./install-spatial-deps
+
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          use-public-rspm: true
+          Ncpus: 2
+          ## Not a CI workaround: the `SpaDES` metapackage was ARCHIVED on CRAN
+          ## on 2026-07-13 ("requires archived package 'reproducible'"), so
+          ## `Require::Require("SpaDES")` -- which is the whole of this action
+          ## -- cannot resolve from CRAN today. r-universe carries
+          ## 2.0.11.9000. `setLinuxBinaryRepo()` inserts Posit's binary repo
+          ## *before* the CRAN mirror and preserves the rest of
+          ## `getOption("repos")`, so this entry survives into the action.
+          extra-repositories: https://predictiveecology.r-universe.dev
+
+      - uses: ./install-Require
+      - uses: ./install-SpaDES
+
+      - name: Assert the SpaDES stack is installed
+        shell: Rscript {0}
+        run: |
+          pkgs <- c("SpaDES", "SpaDES.core", "SpaDES.tools", "quickPlot",
+                    "reproducible", "SpaDES.experiment")
+          have <- vapply(pkgs, function(p) nzchar(system.file(package = p)), logical(1))
+          print(data.frame(package = pkgs, installed = have, row.names = NULL))
+          if (any(!have)) {
+            stop("install-SpaDES did not install: ",
+                 paste(pkgs[!have], collapse = ", "))
+          }
+          ## Installed-only on purpose. Whether these packages LOAD is what the
+          ## R-CMD-check reusable workflow tests, in the repositories that own
+          ## them; asserting it here would turn their breakages into this
+          ## action's red check.
+          cat("SpaDES", as.character(packageVersion("SpaDES")), "\n")
