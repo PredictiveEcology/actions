@@ -31,58 +31,73 @@ on:
         description: "Optional Rscript run after dependency install (e.g. NLMR/fastshp)."
         type: string
         default: ""
+      cache-version:
+        description: >-
+          Bump to invalidate the dependency cache. Exposed so a caller can
+          clear a poisoned library (e.g. a terra built against the wrong
+          libgdal) without a PR to this repo -- a stale cache was the actual
+          root cause of both historical libgdal ABI incidents, and until now
+          this workflow had no way to evict one.
+        type: string
+        default: "1"
+      extra-repositories:
+        description: >-
+          Extra repositories for setup-r. Defaults to the PredictiveEcology
+          r-universe, which is what this workflow hardcoded before it was
+          exposed -- so existing callers are unaffected. Worth setting to "" for
+          a package whose dependencies are all on CRAN: r-universe serves
+          development versions, so leaving it on risks documenting the package
+          against a dependency version CRAN will never have.
+        type: string
+        default: "https://PredictiveEcology.r-universe.dev/"
+      system-deps:
+        description: >-
+          Install the geospatial system libraries (GDAL/GEOS/PROJ/udunits).
+          Set false for a pure-R package. NOT derived from the DESCRIPTION on
+          purpose: reproducible and SpaDES.project reach terra/sf/raster/geodata
+          through Suggests only, so any rule based on hard dependencies gets
+          exactly those packages wrong.
+        type: boolean
+        default: true
 
 jobs:
   pkgdown:
     runs-on: ubuntu-latest
     concurrency:
       group: pkgdown-${{ github.event_name != 'pull_request' || github.run_id }}
+    ## Not read-only, unlike the other three reusable workflows here: the deploy
+    ## step below pushes the rendered site to the gh-pages branch with
+    ## GITHUB_TOKEN. Scoped to this job, and to `contents` only.
+    permissions:
+      contents: write
     env:
       GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v7
 
-      - uses: r-lib/actions/setup-pandoc@v2
-
-      # Stock Noble apt (replicates reproducible). The ubuntugis-unstable PPA
-      # used by install-spatial-deps installs libgdal37, which is ABI-incompatible
-      # with the binaries in Posit's noble cache and breaks geospatial loads.
-      - name: Install spatial deps (Linux, stock Noble)
-        # Short acquire timeouts + retries so a stalled GitHub apt mirror
-        # (azure.archive.ubuntu.com intermittently goes Ign) aborts in ~30s and
-        # fails over instead of hanging the step. See R-CMD-check.yaml for the
-        # observed failure.
-        timeout-minutes: 15
-        run: |
-          printf 'Acquire::Retries "5";\nAcquire::http::Timeout "30";\nAcquire::https::Timeout "30";\n' \
-            | sudo tee /etc/apt/apt.conf.d/99-ci-timeouts > /dev/null
-          sudo DEBIAN_FRONTEND=noninteractive apt-get update -y
-          sudo DEBIAN_FRONTEND=noninteractive apt-get install -f -y || true
-          sudo DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a apt-get install -y --fix-missing \
-            libudunits2-dev libgdal-dev libgeos-dev libproj-dev libsqlite3-dev
-        shell: bash
-
-      - uses: r-lib/actions/setup-r@v2
+      # pandoc, the geospatial system libraries, R, and the dependency
+      # install, all from one place. This workflow used to carry its own copy
+      # of each: a bare setup-pandoc with no retry, a second (differently
+      # spelled) apt block, and a hardcoded extra-repositories. Routing through
+      # the composite also picks up the RcppParallel/oneTBB rebuild probe,
+      # which only R-CMD-check had.
+      #
+      # `pandoc` is deliberately NOT exposed as an input here: pkgdown cannot
+      # render a site without it, so a caller turning it off would only be
+      # buying a confusing failure.
+      - uses: PredictiveEcology/actions/setup-r-deps@main
         with:
-          extra-repositories: 'https://PredictiveEcology.r-universe.dev/'
-          Ncpus: 2
-          # Posit's noble binaries are built against stock libgdal34 (matches the
-          # apt step). r-universe terra is built against libgdal37 and won't load
-          # here -- so prefer RSPM, same as R-CMD-check.
-          use-public-rspm: true
-
-      - uses: r-lib/actions/setup-r-dependencies@v2
-        with:
+          cache-version: ${{ inputs.cache-version }}
+          extra-repositories: ${{ inputs.extra-repositories }}
+          system-deps: ${{ inputs.system-deps }}
+          post-install: ${{ inputs.post-install }}
+          # `local::.` installs the package itself, which pkgdown needs in
+          # order to load it; `needs: website` pulls Config/Needs/website.
+          needs: website
           extra-packages: |
             any::pkgdown
             local::.
             ${{ inputs.extra-packages }}
-          needs: website
-
-      - name: Install additional package dependencies
-        if: ${{ inputs.post-install != '' }}
-        run: ${{ inputs.post-install }}
-        shell: Rscript {0}
 
       - name: Build site
         run: pkgdown::build_site_github_pages(new_process = FALSE, install = FALSE)
