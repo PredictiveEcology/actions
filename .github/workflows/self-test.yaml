@@ -1,0 +1,203 @@
+## Self-test for this repository's own composite actions.
+##
+## Why this exists: the four reusable workflows here are `workflow_call:`-only,
+## so nothing in this repository runs on a pull request. A change merges to
+## `main` unverified and reaches every consumer pinned at `@main` on their next
+## run -- today that is SpaDES, reproducible, SpaDES.core (workflows) and
+## NetLogoR (install-spatial-deps). This is the gate that makes `@main` a safe
+## default pin instead of a gamble.
+##
+## The actions are referenced by LOCAL path (`./setup-r-deps`), which resolves
+## to the pull request's checkout rather than to `main`. That is the whole
+## trick: it tests the code under review, so a new action can be verified
+## BEFORE it exists on `main`, and `uses:`-cannot-take-an-expression never
+## comes up.
+##
+## Scope limit, stated plainly: this covers the composite actions only. The
+## reusable workflows cannot be self-tested as they stand, because they check
+## out the caller at its root and run `R CMD check` there, and this repository
+## has no DESCRIPTION at its root. Closing that gap needs a `working-directory`
+## input threaded through the workflows -- worth doing, deliberately not done
+## here.
+
+name: self-test
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "setup-r-deps/**"
+      - "stage-gdrive-auth/**"
+      - "install-spatial-deps/**"
+      - "install-Require/**"
+      - "install-Rmd-pkgs/**"
+      - "install-SpaDES/**"
+      - "tests/fixture/**"
+      - ".github/workflows/self-test.yaml"
+  workflow_dispatch:
+
+concurrency:
+  group: self-test-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  setup-r-deps:
+    name: setup-r-deps (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macOS-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: ./setup-r-deps
+        with:
+          working-directory: tests/fixture
+          ## Distinct from the consumers' cache namespace, so a poisoned
+          ## self-test cache can never be handed to a real package's build.
+          cache-version: self-test-1
+          extra-packages: any::sessioninfo
+
+      ## `gdal-config --version` inside the action proves the HEADERS are
+      ## present. Only a load proves the ABI matches -- and an ABI mismatch is
+      ## exactly the failure the ubuntugis PPA removal is about, surfacing as
+      ## `libgdal.so.34: cannot open shared object file` at lazy-load time.
+      - name: Verify the spatial stack loads and reprojects
+        shell: Rscript {0}
+        run: |
+          library(terra)
+          cat("terra ", as.character(packageVersion("terra")), "\n")
+          cat("GDAL  ", terra::gdal(), "\n")
+          cat("PROJ  ", terra::gdal(lib = "proj"), "\n")
+          cat("GEOS  ", terra::gdal(lib = "geos"), "\n")
+          ## Reprojection reads proj.db. This is what the macOS PROJ_DATA step
+          ## in setup-r-deps exists to make work; without it this errors with
+          ## "Cannot find proj.db (GDAL error 1)".
+          p <- terra::project(
+            local({
+              r <- terra::rast(nrows = 4, ncols = 4, xmin = 0, xmax = 1,
+                               ymin = 0, ymax = 1, crs = "EPSG:4326")
+              terra::values(r) <- seq_len(16)
+              r
+            }),
+            "EPSG:3857"
+          )
+          stopifnot(terra::ncell(p) > 0, nzchar(terra::crs(p)))
+          cat("reprojection OK\n")
+
+      - name: Session info
+        if: always()
+        shell: Rscript {0}
+        run: sessioninfo::session_info()
+
+  ## Pure logic, no secret required: every branch of the credential sniffing is
+  ## reachable with shape-only fixtures. This is the half that silently rots,
+  ## because in a real run a broken branch just SKIPS the Drive-backed tests and
+  ## the job still goes green.
+  stage-gdrive-auth:
+    name: stage-gdrive-auth (${{ matrix.case.name }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        case:
+          - {name: "absent",         kind: "none",  present: "false", expect: "neither"}
+          - {name: "dropped secret", kind: "none",  present: "true",  expect: "neither"}
+          - {name: "R token (b64)",  kind: "token", present: "true",  expect: "token"}
+          - {name: "undecodable",    kind: "junk",  present: "true",  expect: "neither"}
+          ## A service-account key must be REFUSED, loudly. This case asserts
+          ## the action fails the step rather than staging it or skipping --
+          ## the regression it guards is a silent downgrade back to "green but
+          ## uploads nothing".
+          - {name: "service account", kind: "sa",   present: "true",  expect: "rejected"}
+    steps:
+      - uses: actions/checkout@v7
+
+      ## None of these are credentials. The service-account fixture carries no
+      ## key material -- the action only greps for the `"service_account"`
+      ## marker -- and the token fixture is a gzip stream, which is what
+      ## saveRDS() emits by default and all the action sniffs for.
+      - name: Build shape-only fixtures
+        id: fx
+        shell: bash
+        run: |
+          set -euo pipefail
+          sa='{"type":"service_account","project_id":"fixture-no-key-material"}'
+          case "${{ matrix.case.kind }}" in
+            none)  value="" ;;
+            sa)    value="$(printf '%s' "$sa" | base64 -w0)" ;;
+            token) value="$(printf 'fixture' | gzip -c | base64 -w0)" ;;
+            junk)  value="$(printf 'not a credential at all' | base64 -w0)" ;;
+          esac
+          echo "value=$value" >> "$GITHUB_OUTPUT"
+
+      - id: stage
+        ## A rejected service account fails the step by design, so this must not
+        ## abort the job before the assertion below can check that it did.
+        continue-on-error: true
+        uses: ./stage-gdrive-auth
+        with:
+          credential: ${{ steps.fx.outputs.value }}
+          present: ${{ matrix.case.present }}
+
+      - name: Assert the right output was set
+        shell: bash
+        env:
+          TOKEN: ${{ steps.stage.outputs.token-path }}
+          OUTCOME: ${{ steps.stage.outcome }}
+          EXPECT: ${{ matrix.case.expect }}
+        run: |
+          set -euo pipefail
+          got="neither"
+          [ -n "${TOKEN:-}" ]        && got="token"
+          [ "$OUTCOME" = "failure" ] && got="rejected"
+          echo "expected=$EXPECT got=$got  (outcome=$OUTCOME token='${TOKEN:-}')"
+          if [ "$got" != "$EXPECT" ]; then
+            echo "::error::stage-gdrive-auth returned '$got', expected '$EXPECT'"
+            exit 1
+          fi
+          ## A claimed path must actually exist and be non-empty; an output
+          ## pointing at nothing would let the R side fail far from the cause.
+          if [ "$got" = "token" ] && [ ! -s "$TOKEN" ]; then
+            echo "::error::token-path was set but points at nothing"; exit 1
+          fi
+          echo "OK"
+
+  ## install-spatial-deps has its own consumers (NetLogoR at @main; LandR, map
+  ## and SpaDES.shiny on old tags), so it needs covering independently of
+  ## setup-r-deps.
+  ##
+  ## Linux only, deliberately. Its macOS branch is character-for-character the
+  ## same `brew install pkg-config gdal` + PROJ_DATA pair that setup-r-deps
+  ## runs, and that brew install pulls ~3GB (llvm, gcc, boost, aws-sdk-cpp) for
+  ## ~200s. macOS runners bill at 10x, so a second copy cost more than every
+  ## Linux job here combined while proving nothing the setup-r-deps macOS leg
+  ## does not already prove. Once setup-r-deps calls this action instead of
+  ## reimplementing it, the duplication is gone and this stays correct; until
+  ## then the two are verified identical by inspection.
+  install-spatial-deps:
+    name: install-spatial-deps (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./install-spatial-deps
+      - name: Report what landed
+        shell: bash
+        run: |
+          gdal-config --version
+          geos-config --version
+          ## NOT `proj --version`: the proj CLI lives in proj-bin, which
+          ## libproj-dev does not pull in, and it is absent on the macOS runner
+          ## too. The .pc file ships with the -dev package on both.
+          pkg-config --modversion proj

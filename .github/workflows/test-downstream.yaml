@@ -10,7 +10,7 @@
 #     pull_request: { branches: [main, development] }
 #   jobs:
 #     test-downstream:
-#       uses: PredictiveEcology/actions/.github/workflows/test-downstream.yaml@v0.5
+#       uses: PredictiveEcology/actions/.github/workflows/test-downstream.yaml@main
 #       with:
 #         downstream: >-
 #           [{"repo": "PredictiveEcology/SpaDES.core", "ref": "development"}]

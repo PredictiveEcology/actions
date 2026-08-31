@@ -1,0 +1,103 @@
+name: 'stage-gdrive-auth'
+description: >-
+  Decode a GOOGLEDRIVE_AUTH secret holding a user OAuth token onto the runner
+  and report its path as a step output. Does nothing (and never fails) when the
+  secret is absent, which is the normal case on fork PRs. Service-account keys
+  are REJECTED -- see the `credential` input.
+author: 'Alex Chubaty'
+
+## NOTE: do NOT write `${{ ... }}` anywhere in this file's descriptions.
+## GitHub evaluates expressions inside `description:` too, and `secrets` is not
+## a valid context in a composite action -- one such reference fails the whole
+## manifest to load, for every input, with "Unrecognized named-value".
+inputs:
+  credential:
+    description: >-
+      The raw secret value, i.e. `secrets.GOOGLEDRIVE_AUTH`. Must be a
+      base64-encoded serialized R user OAuth token (`saveRDS` of a gargle/httr
+      token). Base64 is required, not preferred: the token is binary, and a
+      multi-line raw value is dropped by Windows runners.
+
+      Service-account keys are rejected outright. A service account has no
+      Drive quota on user-owned folders, so it authenticates cleanly and then
+      cannot complete an upload round-trip -- upload-backed tests report zero
+      coverage while the job stays green.
+    required: false
+    default: ""
+  present:
+    description: >-
+      Single-line boolean, i.e. `secrets.GOOGLEDRIVE_AUTH != ''`. Passed
+      separately because it always survives the env boundary, which lets this
+      action tell "no secret configured" (quiet, and normal on fork PRs) apart
+      from "secret configured but dropped in transit" (warned). Without it the
+      two are indistinguishable and Drive-backed tests just skip in silence.
+    required: false
+    default: "false"
+
+outputs:
+  token-path:
+    description: >-
+      Path to the staged serialized R token, or empty. Pass to the check step as
+      GDRIVE_OAUTH_TOKEN; the R side gives it to `drive_auth(token = )`.
+    value: ${{ steps.stage.outputs.token-path }}
+
+runs:
+  using: "composite"
+  steps:
+    # Stage as late as possible in the calling job. Every dependency-install
+    # step runs third-party code (pak, the retry fallback, whatever
+    # `post-install` fetches from GitHub) and none of it needs this credential,
+    # so callers must NOT put the secret in a job-level `env:`.
+    #
+    # The secret reaches this script through `env:` rather than expression
+    # interpolation, so it is never pasted into the shell source. Only the
+    # resulting PATH is handed onward.
+    - name: Stage Google Drive credentials
+      id: stage
+      shell: bash
+      env:
+        GOOGLEDRIVE_AUTH_SECRET: ${{ inputs.credential }}
+        GOOGLEDRIVE_AUTH_PRESENT: ${{ inputs.present }}
+      run: |
+        set -euo pipefail
+        if [ -z "${GOOGLEDRIVE_AUTH_SECRET:-}" ]; then
+          if [ "${GOOGLEDRIVE_AUTH_PRESENT}" = "true" ]; then
+            echo "::warning title=Google Drive auth unavailable::GOOGLEDRIVE_AUTH is configured for this repository but arrived empty on ${RUNNER_OS}. Multi-line secrets do not survive the env: boundary on Windows runners -- re-store the secret base64-encoded. Drive-backed tests will SKIP."
+          else
+            echo "GOOGLEDRIVE_AUTH not configured; Drive-backed tests will skip."
+          fi
+          exit 0
+        fi
+        raw="${RUNNER_TEMP}/gdrive-credential"
+        printf '%s' "${GOOGLEDRIVE_AUTH_SECRET}" | base64 -d > "$raw" 2>/dev/null || :
+        if [ ! -s "$raw" ]; then
+          rm -f "$raw"
+          echo "::warning title=Google Drive auth unusable::GOOGLEDRIVE_AUTH did not base64-decode to anything. A serialized R token is binary; store it base64-encoded. Drive-backed tests will SKIP."
+          exit 0
+        fi
+        # Service accounts are rejected, and this is a HARD failure rather than
+        # a warning. A service account authenticates cleanly and then cannot
+        # upload to user-owned folders, so the cloud tests report zero coverage
+        # while everything stays green -- that went undiagnosed for months. A
+        # failed step is the only signal that cannot be mistaken for "no
+        # credential configured".
+        if grep -q '"service_account"' "$raw" 2>/dev/null; then
+          rm -f "$raw"
+          echo "::error title=Service-account credential rejected::GOOGLEDRIVE_AUTH holds a service-account key. Service accounts cannot upload to user-owned Drive folders. Replace it with a base64-encoded user OAuth token: saveRDS(googledrive::drive_token(), f), then base64 f."
+          exit 1
+        fi
+        # readRDS() accepts gzip (1f8b), bzip2 (425a), xz (fd37) or an
+        # uncompressed R serialization header (X/A/B followed by a newline).
+        magic="$(head -c 2 "$raw" | od -An -tx1 | tr -d ' \n')"
+        case "$magic" in
+          1f8b|425a|fd37|58*|41*|42*) ;;
+          *)
+            rm -f "$raw"
+            echo "::warning title=Google Drive auth unusable::GOOGLEDRIVE_AUTH did not decode to a serialized R token. Drive-backed tests will SKIP."
+            exit 0
+            ;;
+        esac
+        f="${RUNNER_TEMP}/google-oauth-token.rds"
+        mv "$raw" "$f"
+        echo "token-path=$f" >> "$GITHUB_OUTPUT"
+        echo "Staged Drive user OAuth token ($(wc -c < "$f") bytes) at $f"
