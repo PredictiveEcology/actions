@@ -27,6 +27,19 @@
   workflows did and this action did not, so its consumers hit
   "Cannot find proj.db") and asserts the installed library versions rather than
   proceeding silently;
+- **`self-test.yaml` now has a job for every path it triggers on.**
+  `install-Require`, `install-Rmd-pkgs` and `install-SpaDES` were in the
+  `paths:` filter with nothing exercising them, so editing one fired the
+  workflow, the workflow tested three other actions, and the green check meant
+  "not tested". Writing the jobs turned up the ordering dependency below and the
+  CRAN archival of the `SpaDES` metapackage (2026-07-13), which makes
+  `Require::Require("SpaDES")` unresolvable from CRAN alone — the job and the
+  README now add the org r-universe;
+- **the `install-Require` -> `install-Rmd-pkgs` / `install-SpaDES` ordering is
+  now documented as a requirement**, not a note. Both dependants open with
+  `Require::setLinuxBinaryRepo()` and fail with "there is no package called
+  'Require'" without it, and SpaDES.core's own
+  `render-module-rmd.yaml.template` gets the order backwards;
 - **the `revdeps-check` action has been removed.** Two of its three inputs
   never did anything. `isTRUE("${{ inputs.cranonly }}")` is `FALSE` for every
   string R can be handed there, so the CRAN-only branch was unreachable and the
