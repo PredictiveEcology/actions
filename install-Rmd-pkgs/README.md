@@ -9,7 +9,10 @@ in which case they should be added to this action.
 
 Note that this action requires the packages `remotes` and `Require` to be installed,
 which can be done via the [`install-Require`](https://github.com/PredictiveEcology/actions/tree/main/install-Require)
-action.
+action. That ordering is not optional and cannot be declared by the action
+itself: `Require::setLinuxBinaryRepo()` is the first statement this action
+runs, so without `install-Require` earlier **in the same job** it fails with
+"there is no package called 'Require'".
 
 # Usage
 
@@ -20,10 +23,10 @@ Inputs available
 Basic:
 ```yaml
 steps:
-- uses: actions/checkout@v3
+- uses: actions/checkout@v7
 - uses: r-lib/actions/setup-r@v2
-- uses: PredictiveEcology/actions/install-Require@v0.2
-- uses: PredictiveEcology/actions/install-Rmd-pkgs@v0.2
+- uses: PredictiveEcology/actions/install-Require@main
+- uses: PredictiveEcology/actions/install-Rmd-pkgs@main
 ```
 
 # License

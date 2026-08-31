@@ -18,7 +18,14 @@ coverage run with different flags. Previously that meant copy-pasting ~90 lines.
     extra-packages: any::rcmdcheck
 ```
 
-Pin to a tag or SHA rather than `@main` — see the note in the repo README.
+`@main` is the org standard — see
+[Which ref to use](../README.md#which-ref-to-use) in the repo README. This
+file used to say the opposite ("pin to a tag or SHA"), which was wrong twice
+over: **no published tag contains this action at all** (`setup-r-deps` and
+`stage-gdrive-auth` were added after `v0.5`, so `@v0.5` and earlier resolve to
+"action not found"), and every tag that does exist still carries an
+`install-spatial-deps` that adds the ubuntugis-unstable PPA — the libgdal37 /
+libgdal34 ABI mismatch this action exists to avoid.
 
 ## Inputs
 

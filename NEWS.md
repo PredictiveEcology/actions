@@ -40,6 +40,18 @@
   `quickPlot`'s `revdeps.yaml`, is `disabled_manually` with zero recorded runs;
   `SpaDES.tools` runs `revdepcheck` locally from `revdep/check.R` instead.
   `@v0.5` and earlier still carry the action for anyone who wants it back;
+- **documentation corrections.** `install-Require`'s README documented the
+  `GitTag` default as `"master"` long after the action moved to `development`,
+  and `PredictiveEcology/Require` has neither a `master` branch nor a `master`
+  tag; `setup-r-deps`' README said to "pin to a tag or SHA rather than `@main`",
+  which is both the opposite of the org standard settled in
+  PredictiveEcology/SpaDES.tools#124 and impossible advice — **no published tag
+  contains `setup-r-deps` or `stage-gdrive-auth` at all**, they postdate `v0.5`;
+  the root README listed five actions, omitting `setup-r-deps`,
+  `stage-gdrive-auth` and all four reusable workflows; and `install-SpaDES`'
+  README still said the `SpaDES` metapackage comes from CRAN, where it has been
+  archived since 2026-07-13. The root README's "Releases and tags" section is
+  now "Which ref to use", and says `@main`, with the reasons;
 - **`install-Require`'s default `GitTag` is now `development`.** The default was
   `master`, a branch that no longer exists on `PredictiveEcology/Require`, so
   the default was dead code that would hard-fail if anyone relied on it.
