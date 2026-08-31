@@ -71,6 +71,25 @@ on:
         description: "R expression passed to check-r-package's `build_args` (the R CMD build flags). Defaults to c(\"--no-manual\", \"--compact-vignettes=gs+qpdf\") so PDF vignettes are compacted for all packages (smaller installed size, avoids CRAN NOTEs; a no-op when there are no PDF vignettes). Override to change."
         type: string
         default: 'c("--no-manual", "--compact-vignettes=gs+qpdf")'
+      system-deps:
+        description: >-
+          Install the geospatial system libraries (GDAL/GEOS/PROJ/udunits).
+          setup-r-deps has always gated its spatial step on this, but the input
+          was never forwarded from here, so no caller could turn it off. Set
+          false for a pure-R package to skip an apt/brew install on every leg.
+          NOT derived from the DESCRIPTION on purpose: reproducible and
+          SpaDES.project reach terra/sf/raster/geodata through Suggests only,
+          so any rule based on hard dependencies gets exactly those packages
+          wrong.
+        type: boolean
+        default: true
+      pandoc:
+        description: >-
+          Install pandoc. Set false only for a package that renders nothing --
+          `R CMD check` needs it for vignettes, and check-r-package's
+          `--as-cran` build does too.
+        type: boolean
+        default: true
 
       extra-env:
         description: >-
@@ -94,6 +113,12 @@ on:
           authenticates but cannot complete an upload round-trip. Optional --
           Drive-backed tests skip without it.
         required: false
+
+## Read-only, matching r-lib/actions' own check templates. The checkout and the
+## snapshot/artifact uploads need nothing more; without a block here a caller
+## whose repository default is read/write hands this workflow -- and every
+## third-party package `post-install` installs -- a writable GITHUB_TOKEN.
+permissions: read-all
 
 jobs:
   R-CMD-check:
@@ -170,6 +195,8 @@ jobs:
           dependencies: ${{ inputs.dependencies }}
           cache-version: ${{ inputs.cache-version }}
           extra-repositories: ${{ inputs.extra-repositories }}
+          system-deps: ${{ inputs.system-deps }}
+          pandoc: ${{ inputs.pandoc }}
           post-install: ${{ inputs.post-install }}
           extra-packages: |
             any::rcmdcheck
