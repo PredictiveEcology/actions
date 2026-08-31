@@ -1,0 +1,52 @@
+## Dependabot for the third-party actions this repository calls.
+##
+## Why this exists: every third-party `uses:` here floats on a major tag --
+## `actions/checkout@v7`, `r-lib/actions/*@v2`, `nick-fields/retry@v3`,
+## `actions/upload-artifact@v4`, `actions/cache/*@v4`,
+## `JamesIves/github-pages-deploy-action@v4`. A floating major tag is a mutable
+## pointer controlled by someone else: it can move under us between two runs of
+## the same commit, and nothing in this repository would record that it had.
+## Upstream r-lib pins by full SHA throughout, which is only livable if
+## something bumps the pins for you. This is that something.
+##
+## It is also the drift detector this repo lacked. v0.4's NEWS claims
+## "nick-fields/retry v3 -> v4"; both call sites are still on v3.
+##
+## Scope notes:
+##  - `github-actions` covers `uses:` in `.github/workflows/*` (that is what
+##    `directory: "/"` means for this ecosystem) and, separately, `uses:` inside
+##    a composite action, which must be listed by its own directory. Only
+##    `setup-r-deps` currently has any; add a block if another one gains a
+##    `uses:`.
+##  - Dependabot does not touch refs that are branch names, so the internal
+##    `PredictiveEcology/actions/...@main` pins -- the org standard -- are left
+##    alone.
+##  - Grouped into one PR per directory so a month of upstream releases is one
+##    review, not six.
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    commit-message:
+      prefix: "chore"
+      include: "scope"
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: "github-actions"
+    directory: "/setup-r-deps"
+    schedule:
+      interval: "monthly"
+    commit-message:
+      prefix: "chore"
+      include: "scope"
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+    open-pull-requests-limit: 5

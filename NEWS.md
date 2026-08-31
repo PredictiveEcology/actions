@@ -54,6 +54,12 @@
   now "Which ref to use", and says `@main`, with the reasons;
 - **`setup-r-deps` and `stage-gdrive-auth` now carry a `LICENSE`**, as every
   older action in the repository does;
+- **`.github/dependabot.yml`**, for the `github-actions` ecosystem. Every
+  third-party action this repository calls floats on a major tag, which is a
+  mutable pointer someone else controls; upstream r-lib pins by full SHA
+  instead, and that is only livable with something to bump the pins. Grouped
+  monthly, one PR per directory, and it does not touch the internal
+  `...@main` pins because Dependabot leaves branch refs alone;
 - **`install-Require`'s default `GitTag` is now `development`.** The default was
   `master`, a branch that no longer exists on `PredictiveEcology/Require`, so
   the default was dead code that would hard-fail if anyone relied on it.
