@@ -83,6 +83,21 @@ on:
           cannot move off their own workflows without silently losing settings.
         type: string
         default: ""
+      system-deps:
+        description: >-
+          Whether to install the geospatial system libraries (GDAL/GEOS/PROJ/
+          udunits). Set false for a pure-R package: on macOS this skips a ~3GB
+          Homebrew pull (llvm, gcc, boost, aws-sdk-cpp, ~200s at the 10x macOS
+          billing rate) and on Linux an apt install, for a package that cannot
+          use either.
+        type: boolean
+        default: true
+      pandoc:
+        description: >-
+          Whether to install pandoc. Set false for a package with no vignettes
+          or Rmd-based documentation.
+        type: boolean
+        default: true
     secrets:
       GOOGLEDRIVE_AUTH:
         description: >-
@@ -167,6 +182,8 @@ jobs:
       - uses: PredictiveEcology/actions/setup-r-deps@main
         with:
           r-version: ${{ matrix.config.r }}
+          system-deps: ${{ inputs.system-deps }}
+          pandoc: ${{ inputs.pandoc }}
           dependencies: ${{ inputs.dependencies }}
           cache-version: ${{ inputs.cache-version }}
           extra-repositories: ${{ inputs.extra-repositories }}
