@@ -70,6 +70,20 @@ on:
         description: "Codecov upload token. Optional for public repos."
         required: false
 
+
+## Cancel superseded runs. Without this, every push to a branch starts a fresh
+## full matrix while the previous one keeps running -- three pushes to a PR
+## means three matrices competing for the org's concurrency budget, for results
+## nobody will look at. `github.ref` here is the CALLER's ref, and concurrency
+## groups are per-repository, so callers cannot collide with each other.
+##
+## Only PRs are cancelled. A push to a default branch runs to completion: those
+## results are the record for that commit, and losing them to a later push
+## leaves gaps in the history.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   test-coverage:
     runs-on: ubuntu-latest
