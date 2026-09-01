@@ -55,6 +55,20 @@ on:
           cannot move off their own workflows without silently losing settings.
         type: string
         default: ""
+      system-deps:
+        description: >-
+          Whether to install the geospatial system libraries (GDAL/GEOS/PROJ/
+          udunits). Set false for a pure-R package: on macOS this skips a ~3GB
+          Homebrew pull and on Linux an apt install, for libraries the package
+          cannot load.
+        type: boolean
+        default: true
+      pandoc:
+        description: >-
+          Whether to install pandoc. Set false for a package with no vignettes
+          or Rmd-based documentation.
+        type: boolean
+        default: true
     secrets:
       GOOGLEDRIVE_AUTH:
         description: >-
@@ -102,12 +116,14 @@ jobs:
             echo "  set ${line%%=*}"
           done
 
-      - uses: r-lib/actions/setup-pandoc@v2
+      - if: inputs.pandoc
+        uses: r-lib/actions/setup-pandoc@v2
 
       # Stock Noble apt (replicates reproducible). The ubuntugis-unstable PPA
       # used by install-spatial-deps installs libgdal37, which is ABI-incompatible
       # with the binaries in Posit's noble cache and breaks geospatial loads.
       - name: Install spatial deps (Linux, stock Noble)
+        if: inputs.system-deps
         # Short acquire timeouts + retries so a stalled GitHub apt mirror
         # (azure.archive.ubuntu.com intermittently goes Ign) aborts in ~30s and
         # fails over instead of hanging the step. See R-CMD-check.yaml for the
