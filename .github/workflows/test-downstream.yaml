@@ -101,8 +101,21 @@ on:
 ## Only PRs are cancelled. A push to a default branch runs to completion: those
 ## results are the record for that commit, and losing them to a later push
 ## leaves gaps in the history.
+## The `-reusable` suffix is load-bearing. Inside a called workflow
+## `github.workflow` resolves to the CALLER's workflow name, so without it this
+## group is byte-identical to one a caller declares with the same (very common)
+## `${{ github.workflow }}-${{ github.ref }}` expression. The called workflow
+## then waits on a group its own parent already holds and GitHub cancels the
+## whole run before a single job starts:
+##
+##   Canceling since a deadlock was detected for concurrency group
+##   'R-CMD-check-refs/pull/137/merge' between a top level workflow
+##   and 'R-CMD-check'
+##
+## With the suffix the two groups are distinct, so callers that declare their
+## own concurrency and callers that do not both work, and neither needs editing.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref }}-reusable
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:

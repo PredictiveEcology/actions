@@ -1,5 +1,18 @@
 # PredictiveEcology/actions (development)
 
+- **Fixed: the concurrency groups added for cancelling superseded runs
+  deadlocked every caller that declared its own.** Inside a called workflow
+  `github.workflow` resolves to the *caller's* workflow name, so
+  `${{ github.workflow }}-${{ github.ref }}` here produced the identical key to
+  the same (very common) expression in a caller. The called workflow then waited
+  on a group its own parent held, and GitHub cancelled the run before any job
+  started — `conclusion: failure` with zero jobs and no check runs, which does
+  not look like a concurrency problem. The groups now carry a `-reusable`
+  suffix, so they cannot collide. **Callers need no change**: those that declare
+  their own concurrency work again untouched, and those that do not still get
+  the cancellation behaviour. Affected every caller pinned to `@main` from
+  2026-09-01 04:05Z until this fix;
+
 - **New composite action `setup-r-deps`**, extracted from the `R-CMD-check`
   reusable workflow: pandoc (with retries), geospatial system libraries, R
   itself, and the dependency install with its retry fallback. A job that is not
