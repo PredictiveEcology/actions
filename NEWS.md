@@ -1,5 +1,23 @@
 # PredictiveEcology/actions (development)
 
+- **New reusable workflow `citation.yaml`**, which regenerates `CITATION.cff`
+  from `DESCRIPTION` and `inst/CITATION`. Four repos (`reproducible`, `SpaDES`,
+  `SpaDES.core`, `SpaDES.tools`) carried near-identical hand-rolled copies of
+  this job; all four now call the template with **no overrides**. Two things
+  this centralises. First, the `install-spatial-deps` pin: a hand-rolled caller
+  names that action directly, so the four had drifted to `@v0.1`, `@v0.2` and a
+  raw SHA, and every tag `v0.1`-`v0.5` still adds the `ubuntugis-unstable` PPA
+  (libgdal37), ABI-incompatible with Posit's noble binaries. The action is now
+  reached through `setup-r-deps`, so the pin is internal here and moves once.
+  Second, a privilege split that previously existed in `SpaDES.tools` alone:
+  generating the file installs and runs third-party R code, committing it needs
+  a write-scoped token, and those must not share a job -- so `build` runs with
+  `contents: read` and uploads an artifact, and `commit` runs with
+  `contents: write` and nothing but git. Callers must grant `contents: write`
+  on the calling job, since a called workflow can only reduce permissions.
+  Inputs: `extra-packages`, `dependencies`, `system-deps`. `pandoc` is
+  deliberately not an input -- nothing in this job renders;
+
 - **`[skip-ci]` is now honoured by every reusable workflow**, org-wide.
   GitHub stops a run itself for its own keywords (`[skip ci]`, `[ci skip]`,
   `[no ci]`, `[skip actions]`, `[actions skip]`), but the hyphenated
