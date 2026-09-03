@@ -113,6 +113,19 @@ concurrency:
 
 jobs:
   test-coverage:
+    ## Honour `[skip-ci]` in the head commit message, org-wide. GitHub stops a
+    ## run itself for its own keywords -- `[skip ci]`, `[ci skip]`, `[no ci]`,
+    ## `[skip actions]`, `[actions skip]` -- but the hyphenated `[skip-ci]` is a
+    ## PE convention it does not know about, so it needs this guard. Several
+    ## callers carried their own copy before moving to these workflows; keeping
+    ## it here means they do not have to.
+    ##
+    ## `head_commit` is the tip of the push, matching GitHub's own semantics
+    ## (Require's hand-rolled version tested `commits[0]`, the OLDEST commit in
+    ## the push -- so a `[skip-ci]` on the tip of a multi-commit push used to be
+    ## ignored). It is null on pull_request and schedule events, and
+    ## `contains(null, ...)` is false, so those always run.
+    if: ${{ !contains(github.event.head_commit.message, '[skip-ci]') }}
     runs-on: ubuntu-latest
     env:
       GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}

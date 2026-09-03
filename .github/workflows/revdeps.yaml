@@ -1,0 +1,131 @@
+# Reusable reverse-dependency check for PredictiveEcology R packages.
+#
+# Wraps the `revdeps-check` composite action in the job harness every caller
+# was otherwise writing by hand: checkout, geospatial system libraries, R, and
+# the dependency install. Call it from a package repo (which owns the
+# triggers), e.g.:
+#
+#   name: revdeps
+#   on:
+#     workflow_dispatch:
+#     schedule: [{cron: '23 23 * * 0'}]
+#   jobs:
+#     revdeps:
+#       uses: PredictiveEcology/actions/.github/workflows/revdeps.yaml@main
+#       secrets: inherit
+#
+# ## Pick the triggers deliberately
+#
+# The composite action's own README warns these checks are too resource
+# intensive for standard GitHub runners, and it means it: each revdep gets a
+# full `R CMD check` with its dependency closure installed first. A weekly
+# `schedule` plus `workflow_dispatch` is the sane default. Running on every
+# `pull_request`, as quickPlot's hand-rolled workflow did across a three-OS
+# matrix, spends hours of runner time on a signal almost no PR changes.
+#
+# ## cranonly
+#
+# `true` (the default) resolves revdeps from what is published on CRAN.
+# `false` additionally walks children and grandchildren via
+# `revdepcheck.extras`, which is what you want for the PE stack, where the
+# interesting downstreams are often on r-universe rather than CRAN -- pair it
+# with `extra-repositories: https://predictiveecology.r-universe.dev`.
+#
+# Revdep sets go stale in BOTH directions. Require's stored `revdep/cran.md`
+# said "no reverse dependencies" because SpaDES.core had been archived on
+# 2026-07-13; SpaDES.core is back at 3.2.1, so that conclusion is now wrong.
+# Re-run rather than repeating a cached answer.
+
+name: revdeps
+
+on:
+  workflow_call:
+    inputs:
+      config:
+        description: >-
+          JSON array of runner legs, one job each, with `os` and `r`. Defaults
+          to a single ubuntu-latest/release leg -- add more only if the package
+          has platform-specific revdep failures worth the runner hours.
+        type: string
+        default: '[{"os": "ubuntu-latest", "r": "release"}]'
+        required: false
+      cranonly:
+        description: "Limit checks to packages published on CRAN? See above."
+        type: boolean
+        default: true
+        required: false
+      quiet:
+        description: "Suppress output from internal processes."
+        type: boolean
+        default: true
+        required: false
+      timeout:
+        description: "Max minutes to wait for R CMD check per revdep."
+        type: string
+        default: "30"
+        required: false
+      extra-packages:
+        description: "Packages appended to setup-r-dependencies `extra-packages` (newline-separated)."
+        type: string
+        default: ""
+        required: false
+      extra-repositories:
+        description: >-
+          Extra repositories for setup-r. Set the r-universe here when using
+          `cranonly: false`.
+        type: string
+        default: ""
+        required: false
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}-reusable
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  revdeps:
+    ## Honour `[skip-ci]` in the head commit message, org-wide. See the same
+    ## guard in R-CMD-check.yaml for why GitHub's native keywords do not cover
+    ## the hyphenated spelling.
+    if: ${{ !contains(github.event.head_commit.message, '[skip-ci]') }}
+    runs-on: ${{ matrix.config.os }}
+    name: ${{ matrix.config.os }} (${{ matrix.config.r }})
+
+    strategy:
+      fail-fast: false
+      matrix:
+        config: ${{ fromJSON(inputs.config) }}
+
+    env:
+      GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
+      OMP_THREAD_LIMIT: 4
+      R_REMOTES_NO_ERRORS_FROM_WARNINGS: true
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: r-lib/actions/setup-pandoc@v2
+
+      - uses: PredictiveEcology/actions/install-spatial-deps@main
+
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          extra-repositories: ${{ inputs.extra-repositories }}
+          Ncpus: 4
+          r-version: ${{ matrix.config.r }}
+          ## Binaries from the public RSPM would shadow what crancache is
+          ## trying to manage, so the revdep path builds from the configured
+          ## repositories instead.
+          use-public-rspm: false
+
+      - uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          extra-packages: |
+            any::rcmdcheck
+            ${{ inputs.extra-packages }}
+          needs: check
+
+      - uses: PredictiveEcology/actions/revdeps-check@main
+        with:
+          cranonly: ${{ inputs.cranonly }}
+          quiet: ${{ inputs.quiet }}
+          timeout: ${{ inputs.timeout }}
