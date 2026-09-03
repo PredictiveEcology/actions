@@ -1,5 +1,31 @@
 # PredictiveEcology/actions (development)
 
+- **`[skip-ci]` is now honoured by every reusable workflow**, org-wide.
+  GitHub stops a run itself for its own keywords (`[skip ci]`, `[ci skip]`,
+  `[no ci]`, `[skip actions]`, `[actions skip]`), but the hyphenated
+  `[skip-ci]` is a PE convention it does not know about, so each caller that
+  wanted it was carrying its own `if:`. Moving to a thin caller silently lost
+  it. The guard now lives here, so callers do not need one.
+
+  Note it tests `github.event.head_commit.message` -- the **tip** of the push,
+  matching GitHub's own semantics. The hand-rolled versions tested
+  `github.event.commits[0].message`, the *oldest* commit in the push, so a
+  `[skip-ci]` on the tip of a multi-commit push used to be ignored. It is null
+  on `pull_request` and `schedule`, so those always run;
+
+- **New reusable workflow `revdeps.yaml`**, wrapping the `revdeps-check`
+  composite action in the job harness callers were otherwise writing by hand
+  (checkout, geospatial system libraries, R, dependency install). quickPlot and
+  Require had each written their own; quickPlot's ran a three-OS matrix on
+  every `pull_request`, which spends hours of runner time on a signal almost no
+  PR changes. The default is a single `ubuntu-latest`/`release` leg, with
+  `config` taking a JSON matrix for packages that genuinely need more.
+
+  Inputs: `config`, `cranonly`, `quiet`, `timeout`, `extra-packages`,
+  `extra-repositories`. Callers own their own triggers -- `workflow_dispatch`
+  plus a weekly `schedule` is the sane default, given the composite action's
+  own warning that revdep checks are too heavy for standard runners;
+
 - **Fixed: the concurrency groups added for cancelling superseded runs
   deadlocked every caller that declared its own.** Inside a called workflow
   `github.workflow` resolves to the *caller's* workflow name, so
