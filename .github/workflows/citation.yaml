@@ -1,0 +1,137 @@
+## Reusable workflow: regenerate CITATION.cff from DESCRIPTION and inst/CITATION.
+##
+## Callers keep only their triggers. See the README of this repo for the input
+## list; every input here has a default that suits the four packages that
+## adopted this first, all of which call it with no overrides at all.
+##
+## Two things this centralises that were previously per-repo:
+##
+##  1. The `install-spatial-deps` pin. A hand-rolled caller names that action
+##     directly, so every repo carried its own ref and they drifted from v0.1 to
+##     v0.5 to a raw SHA -- and every tag v0.1-v0.5 still adds the
+##     ubuntugis-unstable PPA (libgdal37), which is ABI-incompatible with the
+##     binaries in Posit's noble cache. Here the action is reached through
+##     `setup-r-deps`, so the pin is internal to this repository and moves once.
+##
+##  2. The privilege split below, which until now existed only in
+##     SpaDES.tools and by accident.
+
+name: citation
+
+on:
+  workflow_call:
+    inputs:
+      extra-packages:
+        description: >-
+          Extra packages for the dependency install, newline-separated, in
+          pak syntax. `cffr` and `V8` are always installed and need not be
+          listed. Most callers need nothing here.
+        required: false
+        type: string
+        default: ""
+      dependencies:
+        description: >-
+          Passed to setup-r-dependencies. The default `"all"` installs Suggests
+          too, which matters because cffr's `cff_write(dependencies = TRUE)`
+          emits a `references:` entry for each dependency that is INSTALLED and
+          silently drops the rest -- so this input decides how complete that
+          list is. `"hard"` shortens the list and, for a package whose Imports
+          are pure R, removes the geospatial install entirely.
+        required: false
+        type: string
+        default: '"all"'
+      system-deps:
+        description: >-
+          Install the geospatial system libraries. Leave true for any package
+          whose dependency tree reaches terra/sf/raster; set false for a pure-R
+          package, which then skips the apt step outright.
+        required: false
+        type: boolean
+        default: true
+
+## Default deny at the file level; each job re-grants only what it needs. The
+## calling job must itself grant `contents: write`, since a called workflow can
+## only reduce the caller's permissions, never widen them.
+permissions: {}
+
+## Split into two jobs on purpose. Generating CITATION.cff means installing and
+## running third-party R code -- the dependency install builds V8 and the
+## package's own tree, and a source install runs that package's configure
+## script. Committing the result needs a write-scoped token. Those two things
+## must not happen in the same job, or every one of those build scripts runs
+## alongside a token that can push to the repository.
+##
+## So: `build` has contents: read and produces an artifact; `commit` has
+## contents: write and runs nothing but git.
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ## Even a read-scoped token is worth keeping out of .git/config, where
+          ## any later step could read it back with
+          ## `git config --get http.https://github.com/.extraheader`.
+          persist-credentials: false
+
+      ## pandoc is hardcoded off rather than exposed: nothing in this job
+      ## renders anything. cff_write() reads DESCRIPTION and inst/CITATION and
+      ## writes YAML.
+      - uses: PredictiveEcology/actions/setup-r-deps@main
+        ## Scoped to this step rather than the job: it is the only one that
+        ## needs to authenticate to GitHub, and a job-level env would put the
+        ## token in reach of every package build script that runs.
+        env:
+          GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          pandoc: false
+          system-deps: ${{ inputs.system-deps }}
+          dependencies: ${{ inputs.dependencies }}
+          extra-packages: |
+            any::cffr
+            any::V8
+            ${{ inputs.extra-packages }}
+
+      - name: Update CITATION.cff
+        shell: Rscript {0}
+        run: |
+          library(cffr)
+          cff_write(keys = list())
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: citation-cff
+          path: CITATION.cff
+          if-no-files-found: error
+          retention-days: 1
+
+  commit:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ## The push below supplies its own token, so there is no reason to
+          ## leave a write-scoped credential on disk.
+          persist-credentials: false
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: citation-cff
+
+      - name: Commit results
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git config --local user.name "github-actions[bot]"
+          git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add CITATION.cff
+          ## `git commit` exits non-zero when there is nothing staged, which is
+          ## the normal no-change case -- exit cleanly rather than pushing.
+          git commit -m 'Update CITATION.cff' || exit 0
+          git push "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" \
+            "HEAD:${GITHUB_REF_NAME}"
