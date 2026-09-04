@@ -1,5 +1,26 @@
 # PredictiveEcology/actions (development)
 
+- **New reusable workflow `render-module-rmd.yaml`**, for SpaDES modules. Until
+  now every module repository carried a hand-generated copy of this job, written
+  once by `SpaDES.core::use_gha()` and never regenerated. The survey in #36 found
+  74 repositories carrying it across 96 repository/branch combinations, split
+  into two generations that had drifted apart: 46 combinations still on
+  `ubuntu-20.04` with `actions/checkout@v2` and `r-lib/actions/setup-r@v1`, and
+  50 on the newer shape pinning five actions from this repository at `@v0.2`,
+  `@v0` or `@v0.0.1`. Those pins are the main thing blocking retirement of
+  `v0.1`-`v0.5`. A caller now supplies its triggers and the module name; the
+  pins live here. Fixes carried in by the move: the `[skip-ci]` guard tested
+  `commits[0]`, the *oldest* commit in a push, and was absent entirely on pull
+  requests -- it now uses `head_commit` as elsewhere (#34); the job had no
+  `concurrency` group, so superseded runs were never cancelled (#30); the
+  hand-written `apt-get install` had no `apt-get update`, no retries and no
+  timeout, the exact shape that burned two LandWebUtils jobs for 6h on
+  2026-08-19; and the commit step ran on pull requests too, where the push
+  cannot succeed and failed silently every time. Rendering and committing are
+  now separate jobs, as in `citation.yaml`, because rendering executes the
+  module's own `.Rmd` and that must not share a job with a write-scoped token.
+  Inputs: `module` (required), `r-version`, `system-deps`, `extra-apt`;
+
 - **New reusable workflow `citation.yaml`**, which regenerates `CITATION.cff`
   from `DESCRIPTION` and `inst/CITATION`. Four repos (`reproducible`, `SpaDES`,
   `SpaDES.core`, `SpaDES.tools`) carried near-identical hand-rolled copies of
