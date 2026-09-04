@@ -1,0 +1,198 @@
+## Reusable workflow: re-render a SpaDES module's .Rmd to .html and commit it.
+##
+## Callers keep only their triggers and the module name. See issue #36 for the
+## survey this replaces: 74 module repositories carry a hand-generated copy of
+## this job, split across two generations that had drifted apart, and between
+## them they pin five actions from this repository at v0/v0.0.1/v0.2 -- which is
+## what blocks retiring those tags.
+##
+## Assumes the module name equals the repository name. That is already baked
+## into the generated file this replaces (see the `paths = ".."` note below) and
+## holds for every module surveyed.
+
+name: render-module-rmd
+
+on:
+  workflow_call:
+    inputs:
+      module:
+        description: >-
+          Module name, i.e. the basename of <module>.R / <module>.Rmd. Must match
+          the repository name.
+        required: true
+        type: string
+      r-version:
+        description: "R version passed to setup-r."
+        required: false
+        type: string
+        default: "release"
+      system-deps:
+        description: >-
+          Install the geospatial system libraries (GDAL/GEOS/PROJ/udunits).
+          Nearly every module needs them; set false for one that does not.
+        required: false
+        type: boolean
+        default: true
+      extra-apt:
+        description: >-
+          Additional apt packages, space-separated. Modules have no DESCRIPTION,
+          so nothing can derive their system requirements automatically -- this
+          is the escape hatch for a module that needs something beyond the
+          common set installed below.
+        required: false
+        type: string
+        default: ""
+
+## Inside a called workflow `github.workflow` resolves to the CALLER's workflow
+## name, so without the `-reusable` suffix this key collides with the identical
+## expression in a caller that declares its own concurrency -- the called
+## workflow then waits on a group its own parent holds and GitHub cancels the
+## run before any job starts. See #33.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}-reusable
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+## Default deny; each job re-grants only what it needs. The calling job must
+## itself grant `contents: write`, since a called workflow can only reduce the
+## caller's permissions, never widen them.
+permissions: {}
+
+## Split into two jobs on purpose, as in citation.yaml (#35). Rendering a module
+## installs its whole dependency tree and then EXECUTES the module's own .Rmd.
+## Committing the result needs a write-scoped token. Those two things must not
+## share a job, or all of that third-party code runs alongside a token that can
+## push to the repository.
+jobs:
+  render:
+    ## Honour `[skip-ci]` in the head commit message. `head_commit` is the tip of
+    ## the push, matching GitHub's own semantics. The generated file this
+    ## replaces tested `commits[0]` -- the OLDEST commit in the push -- so
+    ## `[skip-ci]` on the tip was ignored, and on a pull_request there is no
+    ## `commits` field at all, so it never applied there either. See #34.
+    if: ${{ !contains(github.event.head_commit.message, '[skip-ci]') }}
+    name: Render module Rmd
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ## The commit job supplies its own token; nothing here needs a
+          ## credential left behind in .git/config.
+          persist-credentials: false
+
+      - if: ${{ inputs.system-deps }}
+        uses: PredictiveEcology/actions/install-spatial-deps@main
+
+      ## The generated file ran a bare `sudo apt-get install` with no
+      ## `apt-get update`, no retries and no timeout. A composite-action step
+      ## cannot use `timeout-minutes`, so a stalled mirror burns the full 6h job
+      ## ceiling -- that is what happened to two LandWebUtils jobs on 2026-08-19.
+      ## Same retry wrapper install-spatial-deps uses.
+      - name: Install other system dependencies
+        shell: bash
+        env:
+          DEBIAN_FRONTEND: noninteractive
+          EXTRA_APT: ${{ inputs.extra-apt }}
+        run: |
+          set -euo pipefail
+          retry() {
+            local n
+            for n in 1 2 3; do
+              if timeout --kill-after=60s "$1" bash -c "$2"; then return 0; fi
+              echo "::warning::'$2' failed or timed out (attempt $n/3); retrying..."
+              sleep $((n * 15))
+            done
+            echo "::error::'$2' still failing after 3 attempts"
+            return 1
+          }
+          printf 'Acquire::Retries "5";\nAcquire::http::Timeout "30";\nAcquire::https::Timeout "30";\n' \
+            | sudo tee /etc/apt/apt.conf.d/99-ci-timeouts > /dev/null
+          retry 5m  "sudo -E apt-get update -y"
+          retry 10m "sudo -E NEEDRESTART_MODE=a apt-get install -y --no-install-recommends \
+                       libcurl4-openssl-dev libgit2-dev libglpk-dev libmagick++-dev \
+                       libxml2-dev python3-gdal ${EXTRA_APT}"
+
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: ${{ inputs.r-version }}
+          use-public-rspm: true
+          Ncpus: 2
+
+      - uses: r-lib/actions/setup-pandoc@v2
+
+      - uses: PredictiveEcology/actions/install-Rmd-pkgs@main
+
+      - uses: PredictiveEcology/actions/install-Require@main
+
+      - uses: PredictiveEcology/actions/install-SpaDES@main
+
+      ## install-Rmd-pkgs runs a second time, deliberately: this is what the
+      ## generated file did, and installing SpaDES can move the versions the
+      ## first call settled on. Preserved rather than dropped -- see #36, where
+      ## it is flagged for someone who knows the history to confirm or remove.
+      - uses: PredictiveEcology/actions/install-Rmd-pkgs@main
+
+      ## `paths = ".."` is not a typo. actions/checkout puts the repository at
+      ## /home/runner/work/<repo>/<repo>, so the working directory is itself
+      ## named after the module and its parent is the module *directory*
+      ## SpaDES.core expects. This is why the module name has to match the
+      ## repository name.
+      - name: Install module package dependencies
+        shell: Rscript {0}
+        env:
+          MODULE: ${{ inputs.module }}
+        run: |
+          m <- Sys.getenv("MODULE")
+          pkgs <- SpaDES.core::packages(modules = m, paths = "..")[[1]]
+          Require::Require(pkgs[[1]])
+
+      - name: Render module Rmd
+        shell: Rscript {0}
+        env:
+          MODULE: ${{ inputs.module }}
+        run: |
+          m <- Sys.getenv("MODULE")
+          rmarkdown::render(paste0(m, ".Rmd"), encoding = "UTF-8")
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: module-html
+          path: ${{ inputs.module }}.html
+          if-no-files-found: error
+          retention-days: 1
+
+  commit:
+    needs: render
+    ## Only on a push. The generated file also ran this on pull_request, where
+    ## `github.ref` is refs/pull/N/merge and the push cannot succeed -- it failed
+    ## silently every time, swallowed by `|| echo "No changes to commit"`.
+    if: ${{ github.event_name == 'push' }}
+    name: Commit rendered html
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: module-html
+
+      - name: Commit results
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          MODULE: ${{ inputs.module }}
+        run: |
+          set -euo pipefail
+          git config --local user.name "github-actions[bot]"
+          git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "${MODULE}.html"
+          ## `git commit` exits non-zero when nothing is staged, which is the
+          ## normal no-change case -- exit cleanly rather than pushing.
+          git commit -m "Re-build ${MODULE}.Rmd" || exit 0
+          git push "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" \
+            "HEAD:${GITHUB_REF_NAME}"
