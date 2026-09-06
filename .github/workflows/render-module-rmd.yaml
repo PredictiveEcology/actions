@@ -151,8 +151,14 @@ jobs:
         env:
           MODULE: ${{ inputs.module }}
         run: |
+          ## packages() returns one element per module, and that element is the
+          ## character vector of that module's reqdPkgs. Indexing it twice --
+          ## `packages(...)[[1]]` and then `pkgs[[1]]` -- reduces 20 packages to
+          ## the string "SpaDES.core", so the render then died on the first
+          ## reqdPkg it touched ("there is no package called 'fireSenseUtils'").
+          ## Index once, as the generated file this workflow replaces did.
           m <- Sys.getenv("MODULE")
-          pkgs <- SpaDES.core::packages(modules = m, paths = "..")[[1]]
+          pkgs <- SpaDES.core::packages(modules = m, paths = "..")
           Require::Require(pkgs[[1]])
 
       - name: Render module Rmd
