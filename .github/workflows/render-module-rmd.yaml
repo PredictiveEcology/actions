@@ -74,6 +74,17 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    ## Every GitHub install in this job -- remotes::install_github() for Require,
+    ## then Require::Require() for each `owner/repo@ref` in the module's reqdPkgs
+    ## -- calls the GitHub API. Without a token they run unauthenticated, fall back
+    ## to the bundled PAT ("Using bundled GitHub PAT. Please add your own..."), and
+    ## fail on its rate limit:
+    ##   cannot open URL 'https://api.github.com/repos/PredictiveEcology/Require/contents/DESCRIPTION?ref=development'
+    ## The generated file this workflow replaces set this at job level; the refactor
+    ## kept GH_TOKEN for the commit job's `git push` but dropped GITHUB_PAT here.
+    ## GITHUB_TOKEN is available to a called workflow without `secrets: inherit`.
+    env:
+      GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v7
         with:
