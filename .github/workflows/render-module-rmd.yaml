@@ -121,16 +121,13 @@ jobs:
 
       - uses: r-lib/actions/setup-pandoc@v2
 
-      - uses: PredictiveEcology/actions/install-Rmd-pkgs@main
-
+      ## Order matters and is not cosmetic: install-Rmd-pkgs and install-SpaDES
+      ## both open with `Require::setLinuxBinaryRepo()`, so Require has to exist
+      ## before either runs. This is the order the generated file used.
       - uses: PredictiveEcology/actions/install-Require@main
 
       - uses: PredictiveEcology/actions/install-SpaDES@main
 
-      ## install-Rmd-pkgs runs a second time, deliberately: this is what the
-      ## generated file did, and installing SpaDES can move the versions the
-      ## first call settled on. Preserved rather than dropped -- see #36, where
-      ## it is flagged for someone who knows the history to confirm or remove.
       - uses: PredictiveEcology/actions/install-Rmd-pkgs@main
 
       ## `paths = ".."` is not a typo. actions/checkout puts the repository at
