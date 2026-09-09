@@ -26,6 +26,13 @@ runs:
         run: |
           ## Install additional package dependencies
           cat("::group::Install 'revdepchecks' and related packages\n")
+          ## r-lib/actions/setup-r-dependencies leaves pak on the path, but the
+          ## README's standalone usage (plain setup-r) does not, and every call
+          ## below needs it.
+          if (!requireNamespace("pak", quietly = TRUE))
+            install.packages("pak", repos = sprintf(
+              "https://r-lib.github.io/p/pak/stable/%s/%s/%s",
+              .Platform$pkgType, R.Version()$os, R.Version()$arch))
           pak::pkg_install(c("fs", "rprojroot"))
           pak::pkg_install("HenrikBengtsson/revdepcheck.extras")
           pak::pkg_install("r-lib/revdepcheck")
@@ -62,7 +69,10 @@ runs:
           cat("::group::Identify revdeps\n")
           options(revdepcheck.num_workers = getOption("Ncpus", 4L))
 
-          if (isTRUE("${{ inputs.cranonly }}")) {
+          ## `isTRUE()` of a string is FALSE for every string, so this branch was
+          ## unreachable and `cranonly` silently did nothing. Inputs arrive as
+          ## "true"/"false"; as.logical() is what reads them.
+          if (isTRUE(as.logical("${{ inputs.cranonly }}"))) {
             revdeps <- rprojroot::find_package_root_file() |>
               fs::path_file() |>
               tools::package_dependencies(which = "most", recursive = FALSE, reverse = TRUE) |>
@@ -79,6 +89,12 @@ runs:
               setdiff(omit_pkgs)
           }
           print(revdeps)
+
+          ## Hand the SAME list to the check step. It used to recompute one,
+          ## unconditionally from revdepcheck.extras, so the two steps could
+          ## disagree about what was being checked -- fixing `cranonly` here
+          ## alone would have cached one set and checked another.
+          writeLines(revdeps, file.path(Sys.getenv("RUNNER_TEMP"), "revdeps.txt"))
           cat("::endgroup::\n")
 
           cat("::group::Update packages in the crancache\n")
@@ -110,14 +126,8 @@ runs:
           cat("::group::Identify revdeps\n")
           options(revdepcheck.num_workers = getOption("Ncpus", 4L))
 
-          omit_pkgs <- c(
-            "SpaDES.project" ## omit b/c it circularly Suggests SpaDES.config
-          )
-          revdeps <- c(
-            revdepcheck.extras::revdep_children(),
-            revdepcheck.extras::revdep_grandchildren()
-          ) |>
-            setdiff(omit_pkgs)
+          ## Written by the crancache step, so `cranonly` is honoured here too.
+          revdeps <- readLines(file.path(Sys.getenv("RUNNER_TEMP"), "revdeps.txt"))
           print(revdeps)
           cat("::endgroup::\n")
 
@@ -130,7 +140,10 @@ runs:
           revdepcheck::revdep_check(
             num_workers = 4L,
             quiet = as.logical("${{ inputs.quiet }}"),
-            timeout = as.difftime("${{ inputs.timeout }}", units = "mins")
+            ## as.difftime() parses a *character* with strptime(format = "%X"),
+            ## so "30" is not a time of day and this was NA -- i.e. no timeout at
+            ## all. as.numeric() first is what makes `units` apply.
+            timeout = as.difftime(as.numeric("${{ inputs.timeout }}"), units = "mins")
           )
           cat("::endgroup::\n")
 
