@@ -1,5 +1,39 @@
 # PredictiveEcology/actions (development)
 
+- **`revdeps-check`: two of its three inputs never worked, and the two steps
+  disagreed about what they were checking.** All verified in R, not by reading:
+
+  ```r
+  isTRUE("true")                     #> FALSE  -- for every string, always
+  as.difftime("30", units = "mins")  #> NA mins
+  ```
+
+  * `cranonly` was read with `isTRUE("${{ inputs.cranonly }}")`, which is `FALSE`
+    for every value the template can produce. The CRAN-only branch was
+    unreachable and the `else` branch always ran. Not a harmless no-op: the
+    crancache key *does* interpolate `inputs.cranonly`, so setting it bought a
+    separate cache namespace holding an identical revdep set. Now
+    `isTRUE(as.logical(...))`.
+  * `timeout` was passed to `revdep_check()` through
+    `as.difftime("30", units = "mins")`. `as.difftime()` parses a character with
+    `strptime(format = "%X")`, so `"30"` is not a time of day and `NA` -- no
+    timeout at all -- is what has always been passed, in an action whose own
+    README calls these checks "too resource intensive for standard GitHub
+    runners". Now `as.numeric()` first.
+  * The *Check reverse dependencies* step recomputed the revdep set
+    unconditionally from `revdepcheck.extras`, ignoring `cranonly` entirely, so
+    fixing the first bug alone would have populated the cache with one set and
+    checked another. The crancache step now writes the list it actually used to
+    `$RUNNER_TEMP/revdeps.txt` and the check step reads it.
+  * `pak::pkg_install()` was called without pak necessarily being present.
+    `r-lib/actions/setup-r-dependencies` leaves it on the path, which is why the
+    `revdeps.yaml` reusable workflow was unaffected, but the README's standalone
+    usage (plain `setup-r`) does not. Installed on demand now.
+
+  Found in the review behind the withdrawn #29, which proposed deleting the
+  action as unused. That is no longer true: `revdeps.yaml` wraps it and quickPlot
+  calls that weekly, so the bugs were fixed rather than the action removed.
+
 - **New reusable workflow `render-module-rmd.yaml`**, for SpaDES modules. Until
   now every module repository carried a hand-generated copy of this job, written
   once by `SpaDES.core::use_gha()` and never regenerated. The survey in #36 found
