@@ -21,16 +21,30 @@ withr::local_options(
   .local_envir = testthat::teardown_env()
 )
 
-## A scratch tree that is removed when the suite finishes. Use `testPaths$outputs`
-## etc. from a test rather than writing beside the module.
+## Where the module is, from testthat's working directory.
+##
+## testthat runs with the working directory set to `tests/testthat`, so the module
+## directory is two levels up and the `modulePath` that SpaDES.core wants -- the
+## directory *containing* modules -- is three. Getting this wrong is silent: the
+## module is simply not found, and every test that needs it skips or errors on
+## something unrelated.
+moduleRoot <- normalizePath(file.path("..", ".."), winslash = "/", mustWork = TRUE)
+moduleName <- basename(moduleRoot)
+modulePath <- dirname(moduleRoot)
+
+## A scratch tree removed when the suite finishes. Write here, never beside the
+## module: the tests run against a throwaway copy, but the habit matters when they
+## are run by hand.
 testPaths <- local({
   root <- withr::local_tempdir(.local_envir = testthat::teardown_env())
   paths <- list(
     cachePath  = file.path(root, "cache"),
     inputPath  = file.path(root, "inputs"),
-    modulePath = normalizePath("..", winslash = "/", mustWork = FALSE),
+    modulePath = modulePath,
     outputPath = file.path(root, "outputs")
   )
-  for (p in paths) dir.create(p, recursive = TRUE, showWarnings = FALSE)
+  for (p in paths[c("cachePath", "inputPath", "outputPath")]) {
+    dir.create(p, recursive = TRUE, showWarnings = FALSE)
+  }
   paths
 })
