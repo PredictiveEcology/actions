@@ -1,5 +1,44 @@
 # PredictiveEcology/actions (development)
 
+- **New reusable workflow `testthat-module.yaml`**, for running a SpaDES module's
+  testthat suite. It is `render-module-rmd.yaml` with the render and commit jobs
+  replaced by a test run; everything above them -- spatial system deps, the apt retry
+  wrapper, `install-Require`, `install-SpaDES`, and dependency resolution straight from
+  the module's own `reqdPkgs` via `SpaDES.core::packages()` -- is deliberately
+  identical, so a fix to one is a fix to both. There is **no commit job**, and that
+  omission is load-bearing: the workflow runs `convertToPackage()`, which rewrites a
+  module and is not reversible, so nothing it produces may be pushed back.
+
+  Three decisions worth knowing:
+
+  * **The module is tested as a package.** A module keeps its functions inline in
+    `<module>.R`, so without conversion they are only ever parsed into a `simList` and
+    a test cannot call one directly. `convertToPackage(destinationPath = )` builds the
+    package rendition in a throwaway directory -- the module itself is untouched -- and
+    the tests then run against a real namespace, so `expect_equal(myHelper(3L), 6L)`
+    works as it would in any package.
+  * **A module with no tests does not fail.** Almost every module currently carries
+    only the dead `newModule()` scaffolding; failing hard would paint the family red
+    for the absence of tests rather than for a defect. The workflow reports "no tests"
+    in the job summary and passes.
+  * **Coverage goes to the job summary, not codecov.** Module repositories have no
+    `CODECOV_TOKEN` and no `codecov.yml`, and ~28 modules with near-zero tests would create
+    28 projects reading 0-5% with no history for the `target: auto` ratchet to compare
+    against. `SpaDES.core::moduleCoverage()` reports against `<module>.R` rather than
+    the generated `R/` copy. See PredictiveEcology/SpaDES.core#441.
+
+  Carries a **temporary** step installing `PredictiveEcology/SpaDES.core@development`:
+  `install-SpaDES` installs the released SpaDES.core, which does not yet have
+  `convertToPackage(destinationPath = )` or `moduleCoverage()`. Drop it once a release
+  carries both.
+
+  Installs the test toolchain (`covr`, `pkgload`, `roxygen2`, `testthat`, `withr`)
+  explicitly. All five are only in SpaDES.core's Suggests, so `install-SpaDES` does not
+  provide them.
+
+  `examples/testthat-module.caller.yaml` shows the call site;
+  `examples/module-tests-setup.R` is a starting `tests/testthat/setup.R` for a module.
+
 - **`revdeps-check`: two of its three inputs never worked, and the two steps
   disagreed about what they were checking.** All verified in R, not by reading:
 
