@@ -18,7 +18,7 @@ coverage run with different flags. Previously that meant copy-pasting ~90 lines.
     extra-packages: any::rcmdcheck
 ```
 
-Pin to a tag or SHA rather than `@main` — see the note in the repo README.
+Use `@main` — see [Which ref to use](../README.md#which-ref-to-use) in the repo README.
 
 ## Inputs
 
