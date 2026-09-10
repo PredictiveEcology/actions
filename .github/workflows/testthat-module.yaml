@@ -146,6 +146,20 @@ jobs:
           Require::Require("PredictiveEcology/SpaDES.core@development",
                            require = FALSE, upgrade = FALSE)
 
+      ## The test toolchain is only in SpaDES.core's Suggests, so install-SpaDES does
+      ## not bring it in. This is the counterpart of render-module-rmd's
+      ## install-Rmd-pkgs step. Without it the first run died before any test, in
+      ## convertToPackage(): `requireNamespace("pkgload", quietly = TRUE) is not TRUE`.
+      ##   pkgload, roxygen2 -- convertToPackage()
+      ##   testthat          -- test_local()
+      ##   covr              -- moduleCoverage()
+      ##   withr             -- the tests/testthat/setup.R template
+      - name: Install test packages
+        shell: Rscript {0}
+        run: |
+          Require::Require(c("covr", "pkgload", "roxygen2", "testthat", "withr"),
+                           require = FALSE)
+
       ## `paths = ".."` is not a typo: actions/checkout puts the repository at
       ## /home/runner/work/<repo>/<repo>, so the working directory is itself named
       ## after the module and its parent is the module *directory* SpaDES.core

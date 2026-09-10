@@ -32,6 +32,10 @@
   `convertToPackage(destinationPath = )` or `moduleCoverage()`. Drop it once a release
   carries both.
 
+  Installs the test toolchain (`covr`, `pkgload`, `roxygen2`, `testthat`, `withr`)
+  explicitly. All five are only in SpaDES.core's Suggests, so `install-SpaDES` does not
+  provide them.
+
   `examples/testthat-module.caller.yaml` shows the call site;
   `examples/module-tests-setup.R` is a starting `tests/testthat/setup.R` for a module.
 
