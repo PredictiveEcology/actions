@@ -1,6 +1,22 @@
 name: 'install-spatial-deps'
 description: 'Action to install system dependencies of geospatial packages'
 author: 'Alex Chubaty'
+
+outputs:
+  abi:
+    description: >-
+      Identity of the geospatial libraries actually installed, as
+      `gdal<v>-geos<v>-proj<v>`. Empty on Windows, where these libraries are
+      bundled into the R binaries rather than provided by the system.
+
+      Exists so a caller can make a cached build artefact depend on the
+      libraries that artefact is LINKED against. An R package's compiled code
+      binds to a specific GDAL soname, and nothing about that binding appears
+      in the package version, the R version or the OS label -- so a cache keyed
+      on those alone can hand a job a library built against a GDAL the runner
+      no longer has. See `setup-r-deps`, which folds this into its cache key.
+    value: ${{ steps.abi.outputs.abi }}
+
 runs:
   using: "composite"
   steps:
@@ -67,3 +83,27 @@ runs:
           echo "Using PROJ_DATA=$PROJ_DATA"
           ls -1 "$PROJ_DATA" | head -5 || true
         shell: bash
+
+      ## Report the ABI the rest of the job will be building against.
+      ##
+      ## Deliberately derived from the tools rather than from the package
+      ## manager: `gdal-config` is the same thing the R packages' configure
+      ## scripts consult, so this is the version they will actually link, on
+      ## both Linux and macOS, however it got installed.
+      ##
+      ## Windows is intentionally excluded, not unimplemented. There is no
+      ## system GDAL there -- rwinlib/Rtools bundles the geospatial libraries
+      ## into the package binaries -- so there is no ABI for the runner to
+      ## drift against, and an empty output means "no constraint".
+      - name: Identify the geospatial ABI
+        id: abi
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          gdal="$(gdal-config --version)"
+          geos="$(geos-config --version)"
+          proj="$(pkg-config --modversion proj)"
+          abi="gdal${gdal}-geos${geos}-proj${proj}"
+          echo "abi=$abi" >> "$GITHUB_OUTPUT"
+          echo "geospatial ABI: $abi"

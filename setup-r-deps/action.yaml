@@ -31,11 +31,12 @@ inputs:
     default: "stable"
   cache-version:
     description: >-
-      Bump to invalidate the dependency cache. Exposed because the cache
-      restore-key carries no discriminator for the dependency set, so a leg can
-      inherit a sibling leg's library -- and a poisoned cache (e.g. a terra
-      built against the wrong libgdal) otherwise needs a PR to THIS repo to
-      clear.
+      Bump to invalidate the dependency cache. Rarely needed now: the geospatial
+      ABI is appended to this value automatically (see the "Compose the cache
+      version" step), so a library built against a different GDAL/GEOS/PROJ can
+      no longer be restored into a job. Still exposed for the cases that
+      automation cannot see -- a bad build from a compiler change, a corrupt
+      upload -- and to let a caller namespace its cache away from others.
     required: false
     default: "1"
   extra-repositories:
@@ -101,6 +102,7 @@ runs:
     # repository's checkout -- so the relative form works only when the caller
     # happens to be this repo, and breaks every real consumer.
     - name: Install geospatial system dependencies
+      id: spatial
       if: inputs.system-deps == 'true'
       uses: PredictiveEcology/actions/install-spatial-deps@main
 
@@ -110,6 +112,52 @@ runs:
         extra-repositories: ${{ inputs.extra-repositories }}
         Ncpus: ${{ inputs.ncpus }}
         use-public-rspm: ${{ inputs.use-public-rspm }}
+
+    # THE fix for inheriting a library linked against libraries the runner no
+    # longer has. `setup-r-dependencies` caches $R_LIBS_USER under an exact key
+    # plus a BARE restore-key:
+    #
+    #   key:          <os>-<R version>-<arch>-<cache-version>-<hash of dep set>
+    #   restore-keys: <os>-<R version>-<arch>-<cache-version>-
+    #
+    # On an exact-key miss -- which is every dependency change, i.e. routine --
+    # the restore-key matches the most recent library any job saved in that
+    # pool. pak then treats what it finds as installed and does not rebuild it.
+    # Nothing in that key describes the SYSTEM libraries the compiled packages
+    # are linked against, so a library built when the runner had a different
+    # GDAL restores cleanly and fails later at dlopen:
+    #
+    #   unable to load shared object '.../sf/libs/sf.so':
+    #   libgdal.so.37: cannot open shared object file
+    #
+    # (CBMutils PR #91: an sf built against GDAL 3.11 restored onto a runner
+    # carrying 3.8. terra escaped only because pak happened to want a newer
+    # version and rebuilt it -- the same poisoned library, two outcomes, decided
+    # by version coincidence. Bumping cache-version would have reset that pool
+    # without preventing the next one.)
+    #
+    # Appending the ABI makes the restore-key itself ABI-specific: a job can
+    # still inherit a sibling's library, which is the cache doing its job, but
+    # only one linked against the libraries this runner actually has.
+    #
+    # Empty when system-deps is false or on Windows, and an empty suffix leaves
+    # the key byte-identical to today's -- so pure-R and Windows callers keep
+    # their existing caches rather than taking a one-off cold build.
+    - name: Compose the cache version
+      id: cache-version
+      shell: bash
+      env:
+        BASE: ${{ inputs.cache-version }}
+        ABI: ${{ steps.spatial.outputs.abi }}
+      run: |
+        set -euo pipefail
+        if [ -n "${ABI:-}" ]; then
+          value="${BASE}-${ABI}"
+        else
+          value="${BASE}"
+        fi
+        echo "value=$value" >> "$GITHUB_OUTPUT"
+        echo "cache-version: $value"
 
     # Install everything, Suggests included. Skipping Suggests looks like a free
     # saving on a no-suggests leg, but that leg's guarantee comes from
@@ -123,7 +171,7 @@ runs:
       uses: r-lib/actions/setup-r-dependencies@v2
       with:
         pak-version: ${{ inputs.pak-version }}
-        cache-version: ${{ inputs.cache-version }}
+        cache-version: ${{ steps.cache-version.outputs.value }}
         dependencies: ${{ inputs.dependencies }}
         working-directory: ${{ inputs.working-directory }}
         extra-packages: ${{ inputs.extra-packages }}
