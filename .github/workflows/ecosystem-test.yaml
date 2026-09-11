@@ -1,0 +1,159 @@
+## Prove a change to the shared actions against REAL consumer packages before it
+## reaches them.
+##
+## Why this is separate from self-test: self-test runs the actions against a
+## two-line fixture package, which is the right shape for asserting the actions'
+## own logic and the wrong shape for asking "does the organisation still build?".
+## The fixture has one Import (terra) and no Suggests worth resolving; the
+## packages that actually consume these workflows have deep, conflicting,
+## partly-r-universe dependency graphs. A change can be perfectly correct
+## against the fixture and still break SpaDES.core.
+##
+## What this does NOT prove: it runs the dependency INSTALL against each
+## package's real DESCRIPTION, not the package's full test suite. That is
+## deliberate -- the install is where these actions do their work, and running
+## four full check matrices would cost more than the organisation's whole CI
+## budget for the day. A green run here means "dependency resolution, the
+## geospatial toolchain and the cache key are sound for these packages", not
+## "these packages pass R CMD check".
+##
+## Run it from the Actions tab on a PR branch before merging anything that
+## touches setup-r-deps or install-spatial-deps.
+
+name: ecosystem-test
+
+on:
+  workflow_dispatch:
+    inputs:
+      packages:
+        description: "Space-separated owner/repo list to test against."
+        type: string
+        default: "PredictiveEcology/reproducible PredictiveEcology/SpaDES.core PredictiveEcology/LandR PredictiveEcology/quickPlot"
+  ## Also available to a PR that opts in with the `ecosystem-test` label, so a
+  ## risky change can be gated without anyone remembering to dispatch it.
+  pull_request:
+    types: [labeled]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ecosystem-test-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  resolve:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.label.name == 'ecosystem-test'
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.build.outputs.matrix }}
+    steps:
+      - id: build
+        shell: bash
+        env:
+          PKGS: ${{ inputs.packages || 'PredictiveEcology/reproducible PredictiveEcology/SpaDES.core PredictiveEcology/LandR PredictiveEcology/quickPlot' }}
+        run: |
+          set -euo pipefail
+          json="$(printf '%s' "$PKGS" | tr ' ' '\n' | grep -v '^$' \
+                  | python3 -c 'import json,sys; print(json.dumps([l.strip() for l in sys.stdin if l.strip()]))')"
+          echo "matrix=$json" >> "$GITHUB_OUTPUT"
+          echo "testing against: $json"
+
+  consumer:
+    needs: resolve
+    name: ${{ matrix.pkg }} (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        pkg: ${{ fromJSON(needs.resolve.outputs.matrix) }}
+        ## Linux and macOS: the two platforms where a system geospatial ABI
+        ## exists and can therefore drift. Windows is covered by self-test,
+        ## where the assertion is that the key does NOT change.
+        os: [ubuntu-latest, macOS-latest]
+    steps:
+      ## The actions under test, at THIS ref.
+      - uses: actions/checkout@v7
+        with:
+          path: .actions-under-test
+
+      ## The real consumer package, at its default branch.
+      - uses: actions/checkout@v7
+        with:
+          repository: ${{ matrix.pkg }}
+          path: pkg
+
+      - name: Describe the subject
+        shell: bash
+        run: |
+          echo "package: ${{ matrix.pkg }}"
+          sed -n '1,12p' pkg/DESCRIPTION
+
+      ## Local path, so this exercises the branch's code rather than @main --
+      ## the same trick self-test uses, and the reason a change can be verified
+      ## before it exists on main.
+      - uses: ./.actions-under-test/setup-r-deps
+        id: deps
+        with:
+          working-directory: pkg
+          ## Namespaced away from every real cache. This workflow must never be
+          ## able to write a library into a pool a production run reads from.
+          cache-version: ecosystem-test-1
+          extra-repositories: "https://PredictiveEcology.r-universe.dev/"
+
+      - name: Assert the cache key is ABI-specific
+        shell: bash
+        env:
+          COMPOSED: ${{ steps.deps.outputs.cache-version }}
+          ABI: ${{ steps.deps.outputs.abi }}
+        run: |
+          set -uo pipefail
+          echo "cache-version: '${COMPOSED:-}'   abi: '${ABI:-}'"
+          gdal="$(gdal-config --version 2>/dev/null | tr -d '[:space:]')"
+          if [ -z "$gdal" ]; then echo "::error::no system GDAL"; exit 1; fi
+          if [ "$COMPOSED" != "ecosystem-test-1-$ABI" ]; then
+            echo "::error::composed '$COMPOSED' != 'ecosystem-test-1-$ABI'"; exit 1
+          fi
+          case "$ABI" in
+            gdal${gdal}*) echo "OK" ;;
+            *) echo "::error::ABI '$ABI' does not match GDAL $gdal"; exit 1 ;;
+          esac
+
+      ## The payload assertion. A cache key is only correct if what it restores
+      ## actually loads -- that is the entire failure this change exists to
+      ## prevent, and it is invisible at install time.
+      - name: Assert the installed spatial stack loads
+        shell: Rscript {0}
+        run: |
+          spatial <- c("terra", "sf")
+          ip <- rownames(installed.packages())
+          for (p in intersect(spatial, ip)) {
+            cat("loading", p, "... ")
+            loadNamespace(p)
+            cat("ok (", as.character(packageVersion(p)), ")\n")
+          }
+          if ("terra" %in% ip) {
+            cat("GDAL", terra::gdal(), "| PROJ", terra::gdal(lib = "proj"),
+                "| GEOS", terra::gdal(lib = "geos"), "\n")
+          }
+          cat("spatial stack OK\n")
+
+      ## Dependency resolution succeeding is the other half: these packages have
+      ## the graphs that break, not the fixture's single Import.
+      - name: Assert the package's own dependencies are installed
+        shell: Rscript {0}
+        run: |
+          desc <- read.dcf(file.path("pkg", "DESCRIPTION"))
+          fields <- intersect(c("Depends", "Imports"), colnames(desc))
+          deps <- unlist(strsplit(paste(desc[, fields], collapse = ","), ","))
+          deps <- trimws(sub("\\(.*", "", deps))
+          deps <- setdiff(deps[nzchar(deps)], c("R", ""))
+          missing <- deps[!deps %in% rownames(installed.packages())]
+          if (length(missing)) {
+            stop("hard dependencies missing after setup-r-deps: ",
+                 paste(missing, collapse = ", "))
+          }
+          cat("all", length(deps), "hard dependencies present\n")

@@ -18,7 +18,22 @@
   (the libraries are bundled into the R binaries there), which leaves those keys
   byte-identical, so pure-R and Windows callers keep their existing caches. Bumping
   `cache-version` is no longer the remedy for an ABI mismatch; it remains for what
-  automation cannot see. Covered by a new `spatial-abi` self-test job.
+  automation cannot see. The ABI probes never fail a job -- an unavailable probe yields
+  an empty ABI, which reproduces the previous cache behaviour rather than going red
+  across the organisation. `setup-r-deps` also gained `cache-version` and `abi` outputs,
+  so what a library was keyed under is assertable rather than inferred from logs.
+  Covered by a new `spatial-abi` self-test job on all three platforms.
+
+- **New `ecosystem-test.yaml` workflow.** `self-test` runs the actions against a
+  two-line fixture package, which cannot answer "does the organisation still build?" --
+  the fixture has one Import, while the real consumers have deep, partly-r-universe
+  dependency graphs. This workflow checks out real packages (reproducible, SpaDES.core,
+  LandR, quickPlot by default) and runs them through the actions at the branch under
+  test, asserting that dependency resolution completes, the cache key is ABI-specific,
+  and the installed spatial stack actually loads. Dispatch it, or add the
+  `ecosystem-test` label to a PR, before merging a change to `setup-r-deps` or
+  `install-spatial-deps`. It tests the dependency install, not the packages' test
+  suites.
 
 - **`testthat-module.yaml`'s temporary SpaDES.core@development step did not reliably
   install development.** r-universe builds SpaDES.core from `development` under the same
