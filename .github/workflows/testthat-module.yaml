@@ -142,10 +142,17 @@ jobs:
       ## have `convertToPackage(destinationPath =)` or the `moduleCoverage()` this
       ## workflow relies on (PredictiveEcology/SpaDES.core#440, #441). Drop this step
       ## once a SpaDES.core carrying both is released.
+      ##
+      ## `(HEAD)` is required, not decoration. r-universe builds SpaDES.core from
+      ## `development` under the same Version, so without it Require finds that
+      ## version already installed, prints "No packages to install/update", and the
+      ## job runs whatever r-universe last built. The first test of pkgdown-module
+      ## did exactly that and failed on "'moduleRmdToVignette' is not an exported
+      ## object from 'namespace:SpaDES.core'".
       - name: Install SpaDES.core (development)
         shell: Rscript {0}
         run: |
-          Require::Require("PredictiveEcology/SpaDES.core@development",
+          Require::Require("PredictiveEcology/SpaDES.core@development (HEAD)",
                            require = FALSE, upgrade = FALSE)
 
       ## The test toolchain is only in SpaDES.core's Suggests, so install-SpaDES does

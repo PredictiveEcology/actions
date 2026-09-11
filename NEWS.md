@@ -1,5 +1,13 @@
 # PredictiveEcology/actions (development)
 
+- **`testthat-module.yaml`'s temporary SpaDES.core@development step did not reliably
+  install development.** r-universe builds SpaDES.core from `development` under the same
+  Version, so `Require::Require("PredictiveEcology/SpaDES.core@development")` found that
+  version installed and printed "No packages to install/update"; jobs ran whatever
+  r-universe had last built. The spec is now `@development (HEAD)`, which a controlled
+  comparison showed installs from GitHub (without it: skipped; with it: installed). Found
+  when `pkgdown-module.yaml`, which carries the same step, failed its first test.
+
 - **New reusable workflow `pkgdown-module.yaml`**, which builds a pkgdown site for a SpaDES
   module and deploys it to `gh-pages`. A module is not a package, so it builds from the
   package rendition `SpaDES.core::convertToPackage(destinationPath = )` makes in a
