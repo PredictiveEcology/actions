@@ -1,0 +1,233 @@
+## Reusable workflow: build a pkgdown site for a SpaDES module and publish it with
+## GitHub Pages. See PredictiveEcology/SpaDES-modules#40.
+##
+## A module is not a package, so the site is built from the package rendition that
+## `SpaDES.core::convertToPackage(destinationPath = )` makes in a throwaway
+## directory -- the same conversion testthat-module.yaml tests against, and the
+## module itself is untouched. In that rendition the module's functions are the
+## package (reference pages for any with roxygen documentation),
+## `SpaDES.core::moduleRmdToVignette()` turns `<module>.Rmd` into an article, and
+## NEWS.md is the changelog.
+##
+## Everything up to the build is render-module-rmd.yaml's setup, deliberately
+## identical, so a fix to one is a fix to both.
+##
+## Callers own the triggers. Every event builds; only a non-pull-request event
+## deploys, and the calling job must grant `contents: write` for that.
+##
+## Assumes the module name equals the repository name (see the `paths = ".."`
+## note below), as render-module-rmd.yaml does.
+
+name: pkgdown-module
+
+on:
+  workflow_call:
+    inputs:
+      module:
+        description: >-
+          Module name, i.e. the basename of <module>.R / <module>.Rmd. Must match
+          the repository name.
+        required: true
+        type: string
+      url:
+        description: >-
+          Site URL, written to the generated _pkgdown.yml. Empty (the default)
+          publishes at https://predictiveecology.github.io/<repository>/. A custom
+          domain with no path, e.g. https://<host>.predictiveecology.org, also makes
+          pkgdown write the CNAME file GitHub Pages reads; it needs a DNS CNAME
+          record pointing <host> at predictiveecology.github.io first. Ignored if
+          the module has its own _pkgdown.yml.
+        required: false
+        type: string
+        default: ""
+      r-version:
+        description: "R version passed to setup-r."
+        required: false
+        type: string
+        default: "release"
+      system-deps:
+        description: >-
+          Install the geospatial system libraries (GDAL/GEOS/PROJ/udunits).
+          Nearly every module needs them; set false for one that does not.
+        required: false
+        type: boolean
+        default: true
+      extra-apt:
+        description: >-
+          Additional apt packages, space-separated. Modules have no DESCRIPTION,
+          so nothing can derive their system requirements automatically.
+        required: false
+        type: string
+        default: ""
+
+## See render-module-rmd.yaml (#33): without the `-reusable` suffix this group
+## collides with a caller's own `${{ github.workflow }}-${{ github.ref }}` group
+## and GitHub cancels the run before any job starts.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}-reusable
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+## Default deny; each job re-grants only what it needs.
+permissions: {}
+
+## Split into two jobs for the same reason as render-module-rmd.yaml (#35): the
+## build installs the module's whole dependency tree and executes its .Rmd, and
+## must not share a job with a token that can push to the repository.
+jobs:
+  build:
+    if: ${{ !contains(github.event.head_commit.message, '[skip-ci]') }}
+    name: Build pkgdown site
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    ## GitHub installs (Require, then each `owner/repo@ref` in reqdPkgs) need a
+    ## token or they hit the unauthenticated API rate limit. See render-module-rmd.
+    env:
+      GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - if: ${{ inputs.system-deps }}
+        uses: PredictiveEcology/actions/install-spatial-deps@main
+
+      ## Same retry wrapper as render-module-rmd.yaml: a composite-action step
+      ## cannot use `timeout-minutes`, so a stalled apt mirror would otherwise burn
+      ## the whole job ceiling.
+      - name: Install other system dependencies
+        shell: bash
+        env:
+          DEBIAN_FRONTEND: noninteractive
+          EXTRA_APT: ${{ inputs.extra-apt }}
+        run: |
+          set -euo pipefail
+          retry() {
+            local n
+            for n in 1 2 3; do
+              if timeout --kill-after=60s "$1" bash -c "$2"; then return 0; fi
+              echo "::warning::'$2' failed or timed out (attempt $n/3); retrying..."
+              sleep $((n * 15))
+            done
+            echo "::error::'$2' still failing after 3 attempts"
+            return 1
+          }
+          printf 'Acquire::Retries "5";\nAcquire::http::Timeout "30";\nAcquire::https::Timeout "30";\n' \
+            | sudo tee /etc/apt/apt.conf.d/99-ci-timeouts > /dev/null
+          retry 5m  "sudo -E apt-get update -y"
+          retry 10m "sudo -E NEEDRESTART_MODE=a apt-get install -y --no-install-recommends \
+                       libcurl4-openssl-dev libgit2-dev libglpk-dev libmagick++-dev \
+                       libxml2-dev python3-gdal ${EXTRA_APT}"
+
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: ${{ inputs.r-version }}
+          use-public-rspm: true
+          Ncpus: 2
+
+      - uses: r-lib/actions/setup-pandoc@v2
+
+      ## Order matters: install-SpaDES and install-Rmd-pkgs open with
+      ## `Require::setLinuxBinaryRepo()`, so Require has to exist first.
+      ## install-Rmd-pkgs brings bookdown and kableExtra, which the module .Rmd
+      ## template renders with.
+      - uses: PredictiveEcology/actions/install-Require@main
+
+      - uses: PredictiveEcology/actions/install-SpaDES@main
+
+      - uses: PredictiveEcology/actions/install-Rmd-pkgs@main
+
+      ## TEMPORARY. install-SpaDES installs the released SpaDES.core, which has
+      ## neither `convertToPackage(destinationPath =)` nor `moduleRmdToVignette()`.
+      ## Drop this step once a SpaDES.core release carries both.
+      ##
+      ## `(HEAD)` is required, not decoration. r-universe builds SpaDES.core from
+      ## `development` under the same Version, so without it Require finds that
+      ## version already installed, prints "No packages to install/update", and the
+      ## job runs whatever r-universe last built. The first test of pkgdown-module
+      ## did exactly that and failed on "'moduleRmdToVignette' is not an exported
+      ## object from 'namespace:SpaDES.core'".
+      - name: Install SpaDES.core (development)
+        shell: Rscript {0}
+        run: |
+          Require::Require("PredictiveEcology/SpaDES.core@development (HEAD)",
+                           require = FALSE, upgrade = FALSE)
+
+      ## pkgload and roxygen2 are what convertToPackage() needs; pkgdown builds.
+      ## None of them come with install-SpaDES.
+      - name: Install site packages
+        shell: Rscript {0}
+        run: |
+          Require::Require(c("pkgdown", "pkgload", "roxygen2"), require = FALSE)
+
+      ## `paths = ".."` is not a typo: actions/checkout puts the repository at
+      ## /home/runner/work/<repo>/<repo>, so the parent of the working directory is
+      ## the module directory SpaDES.core expects. Index `packages()` once.
+      - name: Install module package dependencies
+        shell: Rscript {0}
+        env:
+          MODULE: ${{ inputs.module }}
+        run: |
+          m <- Sys.getenv("MODULE")
+          pkgs <- SpaDES.core::packages(modules = m, paths = "..")
+          Require::Require(pkgs[[1]])
+
+      - name: Build site
+        shell: Rscript {0}
+        env:
+          MODULE: ${{ inputs.module }}
+          SITE_URL: ${{ inputs.url }}
+        run: |
+          m <- Sys.getenv("MODULE")
+          pkg <- SpaDES.core::convertToPackage(
+            m, path = "..", buildDocuments = TRUE,
+            destinationPath = file.path(Sys.getenv("RUNNER_TEMP"), "pkgdown-module"))
+          SpaDES.core::moduleRmdToVignette(m, pkg)
+
+          ## The site title defaults to the package name, which for a module is the
+          ## mangled `fireSense.SpreadFit`; use the module name instead.
+          cfg <- file.path(pkg, "_pkgdown.yml")
+          if (!file.exists(cfg)) {
+            url <- Sys.getenv("SITE_URL")
+            writeLines(c(paste0("title: ", m), if (nzchar(url)) paste0("url: ", url)), cfg)
+          }
+
+          ## pkgdown builds from the installed package: without this step
+          ## build_site(install = FALSE) stops with "there is no package called ...".
+          install.packages(pkg, repos = NULL, type = "source")
+          pkgdown::build_site_github_pages(pkg, new_process = FALSE, install = FALSE)
+
+      ## include-hidden-files: upload-artifact skips dotfiles by default, which
+      ## would drop the .nojekyll that stops GitHub Pages running Jekyll over the
+      ## site.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pkgdown-site
+          path: ${{ runner.temp }}/pkgdown-module/${{ inputs.module }}/docs
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 1
+
+  deploy:
+    needs: build
+    if: ${{ github.event_name != 'pull_request' }}
+    name: Deploy to GitHub Pages
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: pkgdown-site
+          path: site
+
+      ## Same deploy as pkgdown.yaml.
+      - uses: JamesIves/github-pages-deploy-action@v4
+        with:
+          clean: false
+          branch: gh-pages
+          folder: site

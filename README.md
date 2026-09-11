@@ -50,6 +50,7 @@ file's header comment for its inputs.
 | `revdeps.yaml` | reverse dependency checks (wraps `revdeps-check`) |
 | `citation.yaml` | regenerate `CITATION.cff` from `DESCRIPTION` |
 | `render-module-rmd.yaml` | render a SpaDES module's `.Rmd` and commit the result |
+| `pkgdown-module.yaml` | build a SpaDES module's pkgdown site and deploy it to `gh-pages` |
 
 ```yaml
 jobs:
