@@ -1,5 +1,17 @@
 # PredictiveEcology/actions (development)
 
+- **New reusable workflow `pkgdown-module.yaml`**, which builds a pkgdown site for a SpaDES
+  module and deploys it to `gh-pages`. A module is not a package, so it builds from the
+  package rendition `SpaDES.core::convertToPackage(destinationPath = )` makes in a
+  throwaway directory (as `testthat-module.yaml` does), turns `<module>.Rmd` into an
+  article with `SpaDES.core::moduleRmdToVignette()`, installs the rendition -- pkgdown
+  builds from an installed package, and `build_site(install = FALSE)` otherwise stops with
+  "there is no package called ..." -- and runs `build_site_github_pages()`. Setup is
+  `render-module-rmd.yaml`'s; build and deploy are separate jobs, so the write-scoped token
+  never shares a job with the module's code. The `url` input sets a custom domain. Carries a
+  temporary SpaDES.core@development step. `examples/pkgdown-module.caller.yaml` shows the
+  call site. See PredictiveEcology/SpaDES-modules#40.
+
 - **`test-coverage.yaml` uploads with `codecov/codecov-action@v7`, not `covr::codecov()`.**
   covr posts to Codecov's legacy `/upload/v2` endpoint, which only recognises
   per-repository upload tokens. Given the organisation's global upload token it answers

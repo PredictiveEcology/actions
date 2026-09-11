@@ -1,0 +1,23 @@
+## Example caller for the pkgdown-module reusable workflow.
+## Replace <module> with the module name (which must match the repository name).
+## See PredictiveEcology/SpaDES-modules#40.
+
+name: pkgdown-module
+
+on:
+  push:
+    branches: [development]
+  pull_request:
+    branches: [development]
+  workflow_dispatch:
+
+jobs:
+  pkgdown-module:
+    ## The deploy job pushes to gh-pages; a called workflow can only reduce what
+    ## the caller grants, so the write scope has to be granted here.
+    permissions:
+      contents: write
+    uses: PredictiveEcology/actions/.github/workflows/pkgdown-module.yaml@main
+    with:
+      module: <module>
+      ## url: https://<host>.predictiveecology.org   # needs a DNS CNAME record first
