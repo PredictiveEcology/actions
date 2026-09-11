@@ -55,9 +55,11 @@ on:
         default: ""
       coverage:
         description: >-
-          Write a coverage summary to the job summary. Module repositories have no
-          CODECOV_TOKEN and no codecov.yml, so coverage is reported here rather than
-          uploaded; see PredictiveEcology/SpaDES.core#441.
+          Write a coverage summary to the job summary. Coverage is reported here
+          rather than uploaded because module repositories have no codecov.yml and
+          most modules have too few tests for a tracked number to mean anything
+          yet. The org-level CODECOV_TOKEN does reach module repositories; see
+          PredictiveEcology/SpaDES.core#441.
         required: false
         type: boolean
         default: true
@@ -207,9 +209,13 @@ jobs:
           bad <- sum(df$failed) + sum(df$error)
           if (bad > 0) stop(bad, " test failure(s) in ", m)
 
-      ## Module repositories have no CODECOV_TOKEN and no codecov.yml, so the number
-      ## goes in the job summary rather than to a coverage service. moduleCoverage()
-      ## reports against <module>.R, not the generated R/ copy.
+      ## The number goes in the job summary rather than to Codecov: module
+      ## repositories have no codecov.yml, and most modules have too few tests for a
+      ## tracked number to mean anything yet. That is a choice, not a missing
+      ## credential -- the org-level CODECOV_TOKEN reaches module repositories, so
+      ## uploading later needs only the secret declared here and an upload step like
+      ## test-coverage.yaml's. moduleCoverage() reports against <module>.R, not the
+      ## generated R/ copy.
       - name: Coverage summary
         if: ${{ inputs.coverage && steps.has_tests.outputs.found == 'true' }}
         shell: Rscript {0}
