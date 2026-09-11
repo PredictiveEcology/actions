@@ -35,11 +35,13 @@
     only the dead `newModule()` scaffolding; failing hard would paint the family red
     for the absence of tests rather than for a defect. The workflow reports "no tests"
     in the job summary and passes.
-  * **Coverage goes to the job summary, not codecov.** Module repositories have no
-    `CODECOV_TOKEN` and no `codecov.yml`, and ~28 modules with near-zero tests would create
-    28 projects reading 0-5% with no history for the `target: auto` ratchet to compare
-    against. `SpaDES.core::moduleCoverage()` reports against `<module>.R` rather than
-    the generated `R/` copy. See PredictiveEcology/SpaDES.core#441.
+  * **Coverage goes to the job summary, not codecov.** ~28 modules with near-zero tests
+    would create 28 projects reading 0-5% with no history for the `target: auto` ratchet
+    to compare against, and module repositories have no `codecov.yml`. This is a choice,
+    not a missing credential: the org-level `CODECOV_TOKEN` reaches module repositories,
+    so uploading later needs only the secret declared and an upload step like
+    `test-coverage.yaml`'s. `SpaDES.core::moduleCoverage()` reports against `<module>.R`
+    rather than the generated `R/` copy. See PredictiveEcology/SpaDES.core#441.
 
   Carries a **temporary** step installing `PredictiveEcology/SpaDES.core@development`:
   `install-SpaDES` installs the released SpaDES.core, which does not yet have
