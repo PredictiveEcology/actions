@@ -10,7 +10,8 @@
 #     test-coverage:
 #       uses: PredictiveEcology/actions/.github/workflows/test-coverage.yaml@main
 #       ## Name the secrets you pass rather than using `secrets: inherit`.
-#       ## Both are optional; drop either line if unused.
+#       ## GOOGLEDRIVE_AUTH is optional. CODECOV_TOKEN is not: Codecov rejects
+#       ## tokenless uploads for this org, and a failed upload fails the job.
 #       secrets:
 #         GOOGLEDRIVE_AUTH: ${{ secrets.GOOGLEDRIVE_AUTH }}
 #         CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
@@ -81,7 +82,10 @@ on:
           Drive-backed tests skip without it.
         required: false
       CODECOV_TOKEN:
-        description: "Codecov upload token. Optional for public repos."
+        description: >-
+          Codecov upload token: the repository's own, or the organisation's
+          global upload token. Required for the upload -- tokenless uploads are
+          disabled for PredictiveEcology.
         required: false
 
 
@@ -129,7 +133,6 @@ jobs:
     runs-on: ubuntu-latest
     env:
       GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
-      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
       USING_COVR: true
       NOT_CRAN: "true"
 
@@ -295,7 +298,9 @@ jobs:
           assign("merge_coverage.character", wrapped, envir = ns)
           lockBinding("merge_coverage.character", ns)
 
-          covr::codecov(quiet = FALSE)
+          cov <- covr::package_coverage(quiet = FALSE)
+          print(cov)
+          covr::to_cobertura(cov, file.path(Sys.getenv("RUNNER_TEMP"), "cobertura.xml"))
           RSCRIPT
 
           if [ "${{ inputs.run-in-tmux }}" = "true" ]; then
@@ -334,3 +339,26 @@ jobs:
           else
             Rscript "${RUNNER_TEMP}/test-coverage.R"
           fi
+
+      # Uploaded with codecov-action, not covr::codecov(). covr posts to
+      # Codecov's legacy /upload/v2 endpoint, which only knows per-repository
+      # tokens: given the org's global upload token it answers 404 "Could not
+      # find a repository associated with upload token", and covr::codecov()
+      # does not fail the step on that -- so a caller with no token of its own
+      # (fireSenseUtils) went green while uploading nothing. The action takes
+      # either kind of token; `slug` is what lets the global one name the repo.
+      #
+      # A separate step because the R script above may run detached in tmux.
+      #
+      # A failed upload fails the job, except on a pull request that GitHub
+      # gives no secrets (a fork, Dependabot): that cannot upload with a token,
+      # and its author cannot fix it.
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v7
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          slug: ${{ github.repository }}
+          files: ${{ runner.temp }}/cobertura.xml
+          disable_search: true
+          plugins: noop
+          fail_ci_if_error: ${{ github.event_name != 'pull_request' || secrets.CODECOV_TOKEN != '' }}

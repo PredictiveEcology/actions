@@ -1,5 +1,19 @@
 # PredictiveEcology/actions (development)
 
+- **`test-coverage.yaml` uploads with `codecov/codecov-action@v7`, not `covr::codecov()`.**
+  covr posts to Codecov's legacy `/upload/v2` endpoint, which only recognises
+  per-repository upload tokens. Given the organisation's global upload token it answers
+  404 ("Could not find a repository associated with upload token") and the step still
+  passes, so a repository with no token of its own (fireSenseUtils) had green coverage
+  runs that uploaded nothing. The R step now writes `cobertura.xml` with
+  `covr::to_cobertura()`, and a separate step uploads it with
+  `slug: ${{ github.repository }}`, which works with either kind of token.
+
+  A failed upload now **fails the job**, except on a pull request that GitHub gives no
+  secrets (a fork, Dependabot). Callers must pass `CODECOV_TOKEN` (or use
+  `secrets: inherit`): Codecov no longer accepts tokenless uploads for PredictiveEcology.
+  The token is now handed only to the upload step, not exported to every step of the job.
+
 - **New reusable workflow `testthat-module.yaml`**, for running a SpaDES module's
   testthat suite. It is `render-module-rmd.yaml` with the render and commit jobs
   replaced by a test run; everything above them -- spatial system deps, the apt retry

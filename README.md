@@ -44,7 +44,7 @@ file's header comment for its inputs.
 | workflow | what it does |
 | --- | --- |
 | `R-CMD-check.yaml` | the check matrix, incl. a `_R_CHECK_DEPENDS_ONLY_` leg |
-| `test-coverage.yaml` | covr + codecov upload |
+| `test-coverage.yaml` | covr, uploaded with `codecov-action` (caller passes `CODECOV_TOKEN`) |
 | `test-downstream.yaml` | check downstream packages against the branch under test |
 | `pkgdown.yaml` | build the site and deploy to `gh-pages` |
 | `revdeps.yaml` | reverse dependency checks (wraps `revdeps-check`) |
