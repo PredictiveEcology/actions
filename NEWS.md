@@ -1,5 +1,17 @@
 # PredictiveEcology/actions (development)
 
+- **`testthat-module.yaml` and `pkgdown-module.yaml` no longer install
+  SpaDES.core@development explicitly.** `install-SpaDES` installs
+  `SpaDES.experiment@development`, whose `DESCRIPTION` has
+  `Remotes: PredictiveEcology/SpaDES.core@development`, so a development SpaDES.core is
+  already present and the step re-requested the same ref. Verified by running both
+  workflows against `fireSense_SpreadFit` with the step removed (runs 34672314858 and
+  34672314866): `install-SpaDES` alone produced
+  `SpaDES.core 3.2.1 -> 3.2.1.9005 (GitHub: cf20da9)`, the SpaDES.core#446 merge, and the
+  site built. The dependency is now implicit: if `SpaDES.experiment` drops that `Remotes:`
+  entry the workflows fall back to the released SpaDES.core, which lacks
+  `moduleRmdToVignette()`. A SpaDES.core release carrying it removes the coupling.
+
 - **A job could inherit an R library linked against system libraries the runner no
   longer has.** `setup-r-dependencies` caches `$R_LIBS_USER` under an exact key plus a
   bare restore-key (`<os>-<R version>-<arch>-<cache-version>-`), and an exact-key miss --
