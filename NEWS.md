@@ -1,5 +1,42 @@
 # PredictiveEcology/actions (development)
 
+- **A job could inherit an R library linked against system libraries the runner no
+  longer has.** `setup-r-dependencies` caches `$R_LIBS_USER` under an exact key plus a
+  bare restore-key (`<os>-<R version>-<arch>-<cache-version>-`), and an exact-key miss --
+  which is every dependency change -- restores the most recent library any job saved in
+  that pool. Nothing in that key describes the *system* libraries the compiled packages
+  link against, so an `sf` built against GDAL 3.11 restored onto a runner carrying GDAL
+  3.8 and failed at load with `libgdal.so.37: cannot open shared object file`, long after
+  a clean-looking install (CBMutils#91, `ubuntu-latest (devel)`). `terra` escaped in the
+  same job only because pak happened to want a newer version and rebuilt it: one poisoned
+  library, two outcomes, decided by version coincidence. `install-spatial-deps` now
+  reports the installed libraries as an `abi` output (`gdal<v>-geos<v>-proj<v>`, from
+  `gdal-config`/`geos-config`/`pkg-config` -- the same tools the packages' configure
+  scripts consult), and `setup-r-deps` appends it to the cache version, making the
+  restore-key ABI-specific. Jobs still share libraries, but only with jobs built against
+  the same geospatial stack. The suffix is empty for `system-deps: false` and on Windows
+  (the libraries are bundled into the R binaries there), which leaves those keys
+  byte-identical, so pure-R and Windows callers keep their existing caches. Bumping
+  `cache-version` is no longer the remedy for an ABI mismatch; it remains for what
+  automation cannot see. The ABI probes never fail a job -- an unavailable probe yields
+  an empty ABI, which reproduces the previous cache behaviour rather than going red
+  across the organisation. `setup-r-deps` also gained `cache-version` and `abi` outputs,
+  so what a library was keyed under is assertable rather than inferred from logs.
+  Covered by a new `spatial-abi` self-test job on all three platforms.
+
+- **New `ecosystem-test.yaml` workflow.** `self-test` runs the actions against a
+  two-line fixture package, which cannot answer "does the organisation still build?" --
+  the fixture has one Import, while the real consumers have deep, partly-r-universe
+  dependency graphs. This workflow checks out real packages (reproducible, SpaDES.core,
+  LandR, quickPlot by default) and runs them through the actions at the branch under
+  test, asserting that dependency resolution completes, the cache key is ABI-specific,
+  and the installed spatial stack actually loads. Dispatch it, or add the
+  `ecosystem-test` label to a PR, before merging a change to `setup-r-deps` or
+  `install-spatial-deps`. It also runs one real `R CMD check` (reproducible by default)
+  through the production path -- `setup-r-deps` then `check-r-package` -- because an
+  install-only job cannot fail the way production fails: the CBMutils failure that
+  prompted this work installed cleanly and went red at check time.
+
 - **`testthat-module.yaml`'s temporary SpaDES.core@development step did not reliably
   install development.** r-universe builds SpaDES.core from `development` under the same
   Version, so `Require::Require("PredictiveEcology/SpaDES.core@development")` found that

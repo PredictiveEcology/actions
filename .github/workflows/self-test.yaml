@@ -34,6 +34,7 @@ on:
       - "install-SpaDES/**"
       - "tests/fixture/**"
       - ".github/workflows/self-test.yaml"
+      - ".github/workflows/ecosystem-test.yaml"
   workflow_dispatch:
 
 concurrency:
@@ -56,6 +57,7 @@ jobs:
       - uses: actions/checkout@v7
 
       - uses: ./setup-r-deps
+        id: deps
         with:
           working-directory: tests/fixture
           ## Distinct from the consumers' cache namespace, so a poisoned
@@ -90,10 +92,140 @@ jobs:
           stopifnot(terra::ncell(p) > 0, nzchar(terra::crs(p)))
           cat("reprojection OK\n")
 
+      ## The end-to-end assertion: not that an ABI can be computed, but that it
+      ## reached the value `setup-r-dependencies` was actually keyed under. That
+      ## seam is where the two halves of the fix meet, and it is what silently
+      ## regresses if either the delegated output or the local fallback breaks.
+      - name: Assert the composed cache version carries the ABI
+        shell: bash
+        env:
+          COMPOSED: ${{ steps.deps.outputs.cache-version }}
+          ABI: ${{ steps.deps.outputs.abi }}
+        run: |
+          set -uo pipefail
+          echo "composed cache-version: '${COMPOSED:-}'"
+          echo "abi:                    '${ABI:-}'"
+
+          if [ -z "${COMPOSED:-}" ]; then
+            echo "::error::setup-r-deps did not report a cache-version"; exit 1
+          fi
+
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            ## Must be byte-identical to the input, or every Windows consumer
+            ## silently cold-builds on first run after this merges.
+            if [ "$COMPOSED" != "self-test-1" ]; then
+              echo "::error::Windows cache-version changed: '$COMPOSED' (expected 'self-test-1')"; exit 1
+            fi
+            echo "OK: Windows key unchanged"
+            exit 0
+          fi
+
+          gdal="$(gdal-config --version 2>/dev/null | tr -d '[:space:]')"
+          if [ -z "$gdal" ]; then
+            echo "::error::no system GDAL on a leg that requested system-deps"; exit 1
+          fi
+          if [ "$COMPOSED" != "self-test-1-$ABI" ]; then
+            echo "::error::composed '$COMPOSED' is not 'self-test-1-$ABI'"; exit 1
+          fi
+          case "$ABI" in
+            gdal${gdal}*) echo "OK: keyed under $COMPOSED" ;;
+            *) echo "::error::ABI '$ABI' does not match installed GDAL $gdal"; exit 1 ;;
+          esac
+
       - name: Session info
         if: always()
         shell: Rscript {0}
         run: sessioninfo::session_info()
+
+  ## Regression test for the cache key carrying the geospatial ABI.
+  ##
+  ## The bug this guards: setup-r-dependencies' restore-key describes the OS, R
+  ## version, arch and cache-version -- nothing about the SYSTEM libraries the
+  ## compiled packages link against. A library built against a different GDAL
+  ## restores cleanly and fails later at dlopen. The failure is silent at
+  ## install time, so without a test a regression here shows up as somebody
+  ## else's flaky spatial package, months later.
+  ##
+  ## Asserted directly on the action's output rather than by trying to poison a
+  ## real cache: what must hold is that the ABI is reported, and that it reaches
+  ## the key. A cache-poisoning test would need two runs and a runner whose
+  ## system GDAL we can change, which we cannot do here.
+  spatial-abi:
+    name: spatial ABI in cache key (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      ## All three platforms on purpose. Windows must report an EMPTY ABI,
+      ## which is what keeps existing Windows caches valid instead of silently
+      ## cold-building. macOS is here because its branch of install-spatial-deps
+      ## installs only `pkg-config gdal` -- geos-config and PROJ's .pc arrive as
+      ## transitive brew dependencies, so this leg is what proves the probes
+      ## degrade instead of failing the ~30 repositories that use this action.
+      matrix:
+        os: [ubuntu-latest, macOS-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: ./install-spatial-deps
+        id: spatial
+
+      - name: Assert the ABI is well-formed for this platform
+        shell: bash
+        env:
+          ABI: ${{ steps.spatial.outputs.abi }}
+        run: |
+          set -euo pipefail
+          echo "abi='${ABI:-}'"
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            if [ -n "${ABI:-}" ]; then
+              echo "::error::expected an empty ABI on Windows, got '$ABI'"; exit 1
+            fi
+            echo "OK: empty on Windows, so the cache key is unchanged there"
+            exit 0
+          fi
+          ## GDAL is the one component that must always be identified: it is
+          ## installed explicitly on every non-Windows platform, and its soname
+          ## is the mismatch that actually bites (libgdal.so.37 vs .34).
+          if ! printf '%s' "$ABI" | grep -Eq '^gdal[0-9]+\.[0-9]+'; then
+            echo "::error::ABI does not start with a GDAL version: '$ABI'"; exit 1
+          fi
+          ## Whatever IS reported must match the installed libraries -- a stale
+          ## or invented version would be worse than none, since it would key
+          ## caches against a fiction.
+          expect="gdal$(gdal-config --version | tr -d '[:space:]')"
+          if geos="$(geos-config --version 2>/dev/null | tr -d '[:space:]')" && [ -n "$geos" ]; then
+            expect="$expect-geos$geos"
+          fi
+          if proj="$(pkg-config --modversion proj 2>/dev/null | tr -d '[:space:]')" && [ -n "$proj" ]; then
+            expect="$expect-proj$proj"
+          fi
+          if [ "$ABI" != "$expect" ]; then
+            echo "::error::ABI '$ABI' does not match the installed libraries '$expect'"; exit 1
+          fi
+          echo "OK: $ABI"
+
+      ## The output existing is only half of it -- it has to reach the key.
+      ## This reproduces the composition step's logic and asserts the ABI is
+      ## present for a spatial build and absent when system-deps is off.
+      - name: Assert the ABI reaches the composed cache version
+        shell: bash
+        env:
+          ABI: ${{ steps.spatial.outputs.abi }}
+        run: |
+          set -euo pipefail
+          compose() { if [ -n "${2:-}" ]; then echo "$1-$2"; else echo "$1"; fi; }
+          withAbi="$(compose 1 "${ABI:-}")"
+          without="$(compose 1 "")"
+          echo "with system-deps: $withAbi"
+          echo "without:          $without"
+          if [ "$without" != "1" ]; then
+            echo "::error::a pure-R caller's cache key must be unchanged, got '$without'"; exit 1
+          fi
+          if [ "$RUNNER_OS" != "Windows" ] && [ "$withAbi" = "$without" ]; then
+            echo "::error::the ABI did not reach the cache version"; exit 1
+          fi
+          echo "OK"
 
   ## Pure logic, no secret required: every branch of the credential sniffing is
   ## reachable with shape-only fixtures. This is the half that silently rots,

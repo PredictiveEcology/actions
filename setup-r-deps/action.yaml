@@ -31,11 +31,12 @@ inputs:
     default: "stable"
   cache-version:
     description: >-
-      Bump to invalidate the dependency cache. Exposed because the cache
-      restore-key carries no discriminator for the dependency set, so a leg can
-      inherit a sibling leg's library -- and a poisoned cache (e.g. a terra
-      built against the wrong libgdal) otherwise needs a PR to THIS repo to
-      clear.
+      Bump to invalidate the dependency cache. Rarely needed now: the geospatial
+      ABI is appended to this value automatically (see the "Compose the cache
+      version" step), so a library built against a different GDAL/GEOS/PROJ can
+      no longer be restored into a job. Still exposed for the cases that
+      automation cannot see -- a bad build from a compiler change, a corrupt
+      upload -- and to let a caller namespace its cache away from others.
     required: false
     default: "1"
   extra-repositories:
@@ -75,6 +76,21 @@ inputs:
     required: false
     default: "."
 
+outputs:
+  cache-version:
+    description: >-
+      The cache version actually used, i.e. the `cache-version` input with the
+      geospatial ABI appended (see "Cache keys and the geospatial ABI" in the
+      README). Exposed so a caller -- or this repository's own self-test -- can
+      assert what the dependency library was keyed under, rather than inferring
+      it from logs.
+    value: ${{ steps.cache-version.outputs.value }}
+  abi:
+    description: >-
+      The geospatial ABI this job built against, as `gdal<v>-geos<v>-proj<v>`.
+      Empty on Windows and when `system-deps: false`.
+    value: ${{ steps.cache-version.outputs.abi }}
+
 runs:
   using: "composite"
   steps:
@@ -101,6 +117,7 @@ runs:
     # repository's checkout -- so the relative form works only when the caller
     # happens to be this repo, and breaks every real consumer.
     - name: Install geospatial system dependencies
+      id: spatial
       if: inputs.system-deps == 'true'
       uses: PredictiveEcology/actions/install-spatial-deps@main
 
@@ -110,6 +127,89 @@ runs:
         extra-repositories: ${{ inputs.extra-repositories }}
         Ncpus: ${{ inputs.ncpus }}
         use-public-rspm: ${{ inputs.use-public-rspm }}
+
+    # THE fix for inheriting a library linked against libraries the runner no
+    # longer has. `setup-r-dependencies` caches $R_LIBS_USER under an exact key
+    # plus a BARE restore-key:
+    #
+    #   key:          <os>-<R version>-<arch>-<cache-version>-<hash of dep set>
+    #   restore-keys: <os>-<R version>-<arch>-<cache-version>-
+    #
+    # On an exact-key miss -- which is every dependency change, i.e. routine --
+    # the restore-key matches the most recent library any job saved in that
+    # pool. pak then treats what it finds as installed and does not rebuild it.
+    # Nothing in that key describes the SYSTEM libraries the compiled packages
+    # are linked against, so a library built when the runner had a different
+    # GDAL restores cleanly and fails later at dlopen:
+    #
+    #   unable to load shared object '.../sf/libs/sf.so':
+    #   libgdal.so.37: cannot open shared object file
+    #
+    # (CBMutils PR #91: an sf built against GDAL 3.11 restored onto a runner
+    # carrying 3.8. terra escaped only because pak happened to want a newer
+    # version and rebuilt it -- the same poisoned library, two outcomes, decided
+    # by version coincidence. Bumping cache-version would have reset that pool
+    # without preventing the next one.)
+    #
+    # Appending the ABI makes the restore-key itself ABI-specific: a job can
+    # still inherit a sibling's library, which is the cache doing its job, but
+    # only one linked against the libraries this runner actually has.
+    #
+    # Empty when system-deps is false or on Windows, and an empty suffix leaves
+    # the key byte-identical to today's -- so pure-R and Windows callers keep
+    # their existing caches rather than taking a one-off cold build.
+    - name: Compose the cache version
+      id: cache-version
+      shell: bash
+      env:
+        BASE: ${{ inputs.cache-version }}
+        ABI: ${{ steps.spatial.outputs.abi }}
+        SYSTEM_DEPS: ${{ inputs.system-deps }}
+      run: |
+        set -uo pipefail
+
+        abi="${ABI:-}"
+
+        # Fall back to probing directly when the step above did not report an
+        # ABI but system libraries were requested. Two cases, one benign and one
+        # not:
+        #
+        #  - This action pins `install-spatial-deps@main`, because a relative
+        #    `uses:` inside a composite action resolves against the CALLER's
+        #    checkout. So on a pull request to THIS repository the delegated
+        #    step is still main's copy, which has no `abi` output until this
+        #    merges. Without this fallback the feature cannot be tested
+        #    end-to-end before it ships -- which is precisely the class of
+        #    change that should not ship untested across ~30 repositories.
+        #  - A consumer pinned to an old tag, where the output does not exist.
+        #
+        # Probing here is cheap (three version queries against libraries that
+        # are already installed) and never fails the job: an empty result just
+        # reproduces the old, non-ABI-specific key.
+        if [ -z "$abi" ] && [ "${SYSTEM_DEPS}" = "true" ] && [ "$RUNNER_OS" != "Windows" ]; then
+          probe() {
+            local out
+            if out="$("$@" 2>/dev/null)" && [ -n "$out" ]; then
+              printf '%s' "$out" | tr -d '[:space:]'
+            fi
+          }
+          gdal="$(probe gdal-config --version)"
+          geos="$(probe geos-config --version)"
+          proj="$(probe pkg-config --modversion proj)"
+          [ -n "$gdal" ] && abi="gdal${gdal}"
+          [ -n "$geos" ] && abi="${abi:+${abi}-}geos${geos}"
+          [ -n "$proj" ] && abi="${abi:+${abi}-}proj${proj}"
+          [ -n "$abi" ] && echo "note: ABI determined by local probe, not by the install-spatial-deps output"
+        fi
+
+        if [ -n "$abi" ]; then
+          value="${BASE}-${abi}"
+        else
+          value="${BASE}"
+        fi
+        echo "value=$value" >> "$GITHUB_OUTPUT"
+        echo "abi=$abi" >> "$GITHUB_OUTPUT"
+        echo "cache-version: $value"
 
     # Install everything, Suggests included. Skipping Suggests looks like a free
     # saving on a no-suggests leg, but that leg's guarantee comes from
@@ -123,7 +223,7 @@ runs:
       uses: r-lib/actions/setup-r-dependencies@v2
       with:
         pak-version: ${{ inputs.pak-version }}
-        cache-version: ${{ inputs.cache-version }}
+        cache-version: ${{ steps.cache-version.outputs.value }}
         dependencies: ${{ inputs.dependencies }}
         working-directory: ${{ inputs.working-directory }}
         extra-packages: ${{ inputs.extra-packages }}

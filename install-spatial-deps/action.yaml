@@ -1,6 +1,22 @@
 name: 'install-spatial-deps'
 description: 'Action to install system dependencies of geospatial packages'
 author: 'Alex Chubaty'
+
+outputs:
+  abi:
+    description: >-
+      Identity of the geospatial libraries actually installed, as
+      `gdal<v>-geos<v>-proj<v>`. Empty on Windows, where these libraries are
+      bundled into the R binaries rather than provided by the system.
+
+      Exists so a caller can make a cached build artefact depend on the
+      libraries that artefact is LINKED against. An R package's compiled code
+      binds to a specific GDAL soname, and nothing about that binding appears
+      in the package version, the R version or the OS label -- so a cache keyed
+      on those alone can hand a job a library built against a GDAL the runner
+      no longer has. See `setup-r-deps`, which folds this into its cache key.
+    value: ${{ steps.abi.outputs.abi }}
+
 runs:
   using: "composite"
   steps:
@@ -67,3 +83,61 @@ runs:
           echo "Using PROJ_DATA=$PROJ_DATA"
           ls -1 "$PROJ_DATA" | head -5 || true
         shell: bash
+
+      ## Report the ABI the rest of the job will be building against.
+      ##
+      ## Deliberately derived from the tools rather than from the package
+      ## manager: `gdal-config` is the same thing the R packages' configure
+      ## scripts consult, so this is the version they will actually link, on
+      ## both Linux and macOS, however it got installed.
+      ##
+      ## Windows is intentionally excluded, not unimplemented. There is no
+      ## system GDAL there -- rwinlib/Rtools bundles the geospatial libraries
+      ## into the package binaries -- so there is no ABI for the runner to
+      ## drift against, and an empty output means "no constraint".
+      ## MUST NOT fail the job. This runs in an action that ~30 repositories
+      ## depend on, and its output is an optimisation -- a cache discriminator --
+      ## not something any build needs to proceed. If a probe is unavailable the
+      ## correct outcome is an empty ABI, which means "no constraint" and
+      ## reproduces exactly the pre-existing cache behaviour, NOT a red run
+      ## across the organisation.
+      ##
+      ## Concretely: the macOS branch above installs only `pkg-config gdal`, so
+      ## `geos-config` and PROJ's .pc file are present only as transitive brew
+      ## dependencies. That is true today and is not a contract. Hence every
+      ## probe is individually guarded and the whole step is `|| true`-shaped
+      ## rather than `set -e`.
+      ##
+      ## A partial ABI is deliberately still emitted: `gdal3.8.4` alone
+      ## discriminates the case that actually bites (the GDAL soname), and a
+      ## missing GEOS/PROJ probe should not throw that away.
+      - name: Identify the geospatial ABI
+        id: abi
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -uo pipefail
+
+          probe() {
+            local out
+            if out="$("$@" 2>/dev/null)" && [ -n "$out" ]; then
+              printf '%s' "$out" | tr -d '[:space:]'
+            fi
+          }
+
+          gdal="$(probe gdal-config --version)"
+          geos="$(probe geos-config --version)"
+          proj="$(probe pkg-config --modversion proj)"
+
+          abi=""
+          [ -n "$gdal" ] && abi="gdal${gdal}"
+          [ -n "$geos" ] && abi="${abi:+${abi}-}geos${geos}"
+          [ -n "$proj" ] && abi="${abi:+${abi}-}proj${proj}"
+
+          if [ -z "$abi" ]; then
+            echo "::warning::could not identify any geospatial library version; \
+          the dependency cache key will not be ABI-specific for this job"
+          fi
+
+          echo "abi=$abi" >> "$GITHUB_OUTPUT"
+          echo "geospatial ABI: ${abi:-<none>}"
