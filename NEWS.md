@@ -32,8 +32,10 @@
   test, asserting that dependency resolution completes, the cache key is ABI-specific,
   and the installed spatial stack actually loads. Dispatch it, or add the
   `ecosystem-test` label to a PR, before merging a change to `setup-r-deps` or
-  `install-spatial-deps`. It tests the dependency install, not the packages' test
-  suites.
+  `install-spatial-deps`. It also runs one real `R CMD check` (reproducible by default)
+  through the production path -- `setup-r-deps` then `check-r-package` -- because an
+  install-only job cannot fail the way production fails: the CBMutils failure that
+  prompted this work installed cleanly and went red at check time.
 
 - **`testthat-module.yaml`'s temporary SpaDES.core@development step did not reliably
   install development.** r-universe builds SpaDES.core from `development` under the same

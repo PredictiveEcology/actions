@@ -9,13 +9,22 @@
 ## partly-r-universe dependency graphs. A change can be perfectly correct
 ## against the fixture and still break SpaDES.core.
 ##
-## What this does NOT prove: it runs the dependency INSTALL against each
-## package's real DESCRIPTION, not the package's full test suite. That is
-## deliberate -- the install is where these actions do their work, and running
-## four full check matrices would cost more than the organisation's whole CI
-## budget for the day. A green run here means "dependency resolution, the
-## geospatial toolchain and the cache key are sound for these packages", not
-## "these packages pass R CMD check".
+## Two jobs, deliberately different in cost:
+##
+##  - `consumer` runs the dependency INSTALL against each package's real
+##    DESCRIPTION, on Linux and macOS. Cheap enough to run across several
+##    packages; the install is where these actions do most of their work.
+##  - `check` runs a REAL `R CMD check` through the whole R-CMD-check path --
+##    setup-r-deps, then r-lib/actions/check-r-package, the same steps and the
+##    same order as production. One package, one platform, because a full
+##    matrix across four packages would cost more than the organisation's CI
+##    budget for the day.
+##
+## The second exists because the first cannot fail the way production fails.
+## An install-only job proves packages RESOLVE; it does not prove the library
+## it assembled can be loaded by a check running under a different library path
+## -- which is precisely the shape of the libgdal.so.37 failure this change is
+## about (CBMutils#91: install clean, check red).
 ##
 ## Which packages: the ACTUAL consumers of the reusable workflows. LandR is
 ## deliberately not in the default list -- it still hand-rolls its own
@@ -37,9 +46,13 @@ on:
   workflow_dispatch:
     inputs:
       packages:
-        description: "Space-separated owner/repo list to test against."
+        description: "Space-separated owner/repo list to test against (install-only job)."
         type: string
         default: "PredictiveEcology/reproducible PredictiveEcology/SpaDES.core PredictiveEcology/quickPlot PredictiveEcology/SpaDES.tools"
+      check-package:
+        description: "Single owner/repo to run a real R CMD check against."
+        type: string
+        default: "PredictiveEcology/reproducible"
   ## Also available to a PR that opts in with the `ecosystem-test` label, so a
   ## risky change can be gated without anyone remembering to dispatch it.
   pull_request:
@@ -168,3 +181,69 @@ jobs:
                  paste(missing, collapse = ", "))
           }
           cat("all", length(deps), "hard dependencies present\n")
+
+  ## A real R CMD check, through the real steps, on a real consumer.
+  ##
+  ## reproducible by default: it is migrated, it is a hard dependency of most of
+  ## the organisation, and its suite touches the geospatial stack heavily -- so
+  ## a cache-key regression that survives the install shows up here.
+  check:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.label.name == 'ecosystem-test'
+    name: R CMD check ${{ inputs.check-package || 'PredictiveEcology/reproducible' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      ## Match what the reusable workflow sets, so this is the production path
+      ## and not a lookalike.
+      GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
+      R_REMOTES_NO_ERRORS_FROM_WARNINGS: true
+      R_VERSION_LABEL: release
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: .actions-under-test
+
+      - uses: actions/checkout@v7
+        with:
+          repository: ${{ inputs.check-package || 'PredictiveEcology/reproducible' }}
+          path: pkg
+
+      - uses: ./.actions-under-test/setup-r-deps
+        id: deps
+        with:
+          working-directory: pkg
+          cache-version: ecosystem-test-1
+          extra-repositories: "https://PredictiveEcology.r-universe.dev/"
+          extra-packages: |
+            any::rcmdcheck
+
+      - name: Report what the library was keyed under
+        shell: bash
+        run: |
+          echo "cache-version: '${{ steps.deps.outputs.cache-version }}'"
+          echo "abi:           '${{ steps.deps.outputs.abi }}'"
+
+      ## The actual runner. error-on "error" rather than the production default
+      ## "warning": this job is asking "did the ACTIONS break the check?", and
+      ## failing it on a pre-existing NOTE or WARNING in somebody else's package
+      ## would make the signal useless. Test failures and errors still fail.
+      - uses: r-lib/actions/check-r-package@v2
+        with:
+          working-directory: pkg
+          upload-snapshots: true
+          error-on: '"error"'
+          args: 'c("--no-manual", "--as-cran")'
+          build_args: 'c("--no-manual")'
+
+      - name: Show test output
+        if: always()
+        shell: bash
+        run: |
+          find pkg/check -path '*/tests/*' \( -name '*.Rout' -o -name '*.Rout.fail' \) \
+            | while read -r f; do
+                echo "::group::$f"
+                tail -100 "$f"
+                echo "::endgroup::"
+              done
