@@ -143,12 +143,15 @@ jobs:
       ## workflow relies on (PredictiveEcology/SpaDES.core#440, #441). Drop this step
       ## once a SpaDES.core carrying both is released.
       ##
-      ## `(HEAD)` is required, not decoration. r-universe builds SpaDES.core from
-      ## `development` under the same Version, so without it Require finds that
-      ## version already installed, prints "No packages to install/update", and the
-      ## job runs whatever r-universe last built. The first test of pkgdown-module
-      ## did exactly that and failed on "'moduleRmdToVignette' is not an exported
-      ## object from 'namespace:SpaDES.core'".
+      ## `(HEAD)` is required, not decoration. install-SpaDES already pulls SpaDES.core
+      ## from `development` (via SpaDES.experiment's `Remotes:`), so the Version this
+      ## step asks for is usually the one already installed; without `(HEAD)` Require
+      ## prints "No packages to install/update" and the job keeps whatever was there.
+      ## Verified in CI (fireSense_SpreadFit run 34638223714): with an equal Version
+      ## the plain spec skipped and `(HEAD)` fetched the requested branch, so a version
+      ## bump is not what makes this work. The first test of pkgdown-module hit the
+      ## skip and failed on "'moduleRmdToVignette' is not an exported object from
+      ## 'namespace:SpaDES.core'".
       - name: Install SpaDES.core (development)
         shell: Rscript {0}
         run: |

@@ -38,12 +38,15 @@
   prompted this work installed cleanly and went red at check time.
 
 - **`testthat-module.yaml`'s temporary SpaDES.core@development step did not reliably
-  install development.** r-universe builds SpaDES.core from `development` under the same
-  Version, so `Require::Require("PredictiveEcology/SpaDES.core@development")` found that
-  version installed and printed "No packages to install/update"; jobs ran whatever
-  r-universe had last built. The spec is now `@development (HEAD)`, which a controlled
-  comparison showed installs from GitHub (without it: skipped; with it: installed). Found
-  when `pkgdown-module.yaml`, which carries the same step, failed its first test.
+  install development.** `install-SpaDES` already installs SpaDES.core from `development`
+  (pulled in via `SpaDES.experiment`'s `Remotes:`), so the Version this step asks for is
+  usually the one already installed and
+  `Require::Require("PredictiveEcology/SpaDES.core@development")` printed "No packages to
+  install/update", leaving whatever was there. The spec is now `@development (HEAD)`, which
+  CI confirmed installs from GitHub even when the Versions are equal (fireSense_SpreadFit
+  run 34638223714: plain spec skipped, `(HEAD)` fetched the requested branch) -- a version
+  bump is not what makes this work. Found when `pkgdown-module.yaml`, which carries the same
+  step, failed its first test.
 
 - **New reusable workflow `pkgdown-module.yaml`**, which builds a pkgdown site for a SpaDES
   module and deploys it to `gh-pages`. A module is not a package, so it builds from the
