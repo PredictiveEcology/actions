@@ -182,7 +182,7 @@ jobs:
     ## `github.ref` is refs/pull/N/merge and the push cannot succeed -- it failed
     ## silently every time, swallowed by `|| echo "No changes to commit"`.
     if: ${{ github.event_name == 'push' }}
-    name: Commit rendered html
+    name: Commit html (only pushes to main/development)
     runs-on: ubuntu-latest
     permissions:
       contents: write
