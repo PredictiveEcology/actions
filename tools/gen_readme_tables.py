@@ -154,20 +154,20 @@ def behaviour_table(wfs):
         "|---" * (len(wfs) + 1) + "|",
     ]
 
-    def mark(fn, gap_when_absent=lambda wf: True):
-        out = []
-        for wf, (d, c, t) in wfs.items():
-            if fn(d, c, t):
-                out.append(f"{YES} yes")
-            else:
-                out.append(f"{GAP} no" if gap_when_absent(wf) else NA)
-        return "| " + " | ".join(out) + " |"
+    def trait(label, fn, applies=lambda wf: True):
+        """One behaviour row, or nothing when no workflow has the behaviour: a row
+        of warnings for something the repo no longer does would be noise."""
+        have = {wf: fn(d, c, t) for wf, (d, c, t) in wfs.items()}
+        if not any(have.values()):
+            return
+        cells = [f"{YES} yes" if have[wf] else (f"{GAP} no" if applies(wf) else NA) for wf in wfs]
+        rows.append(f"| {label} | " + " | ".join(cells) + " |")
 
-    rows.append("| Uses `setup-r-deps` " + mark(lambda d, c, t: "setup-r-deps@" in code(t),
-                                                lambda wf: kind(wf) == "package"))
-    rows.append("| Honours `[skip-ci]` " + mark(
-        lambda d, c, t: any("skip-ci" in str(j.get("if", "")) for j in (d.get("jobs") or {}).values())))
-    rows.append("| Cancels superseded PR runs " + mark(lambda d, c, t: bool(d.get("concurrency"))))
+    trait("Uses `setup-r-deps`", lambda d, c, t: "setup-r-deps@" in code(t),
+          lambda wf: kind(wf) == "package")
+    trait("Honours `[skip-ci]`",
+          lambda d, c, t: any("skip-ci" in str(j.get("if", "")) for j in (d.get("jobs") or {}).values()))
+    trait("Cancels superseded PR runs", lambda d, c, t: bool(d.get("concurrency")))
     rows.append("| Dependency source | " + " | ".join(
         dep_source(d, c, t) for d, c, t in wfs.values()) + " |")
     rows.append("| Accepts secrets | " + " | ".join(
