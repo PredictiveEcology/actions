@@ -1,5 +1,13 @@
 # PredictiveEcology/actions (development)
 
+- **The `[skip-ci]` guard is removed from every workflow.** GitHub already skips a
+  run for `[skip ci]`, `[ci skip]`, `[no ci]`, `[skip actions]` and `[actions skip]`,
+  and it does so before any run starts. The hyphenated `[skip-ci]` is a local
+  convention GitHub does not recognise, so honouring it needed a job-level `if:` in
+  eight workflows, which could only skip the jobs once the run was already going.
+  Commit messages using `[skip-ci]` will now run CI: use one of the keywords above
+  instead.
+
 - **`testthat-module.yaml` and `pkgdown-module.yaml` no longer install
   SpaDES.core@development explicitly.** `install-SpaDES` installs
   `SpaDES.experiment@development`, whose `DESCRIPTION` has
