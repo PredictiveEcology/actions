@@ -73,6 +73,16 @@ no reusable workflow fits. For details and example usage see each action's
 1. [stage-gdrive-auth](https://github.com/PredictiveEcology/actions/tree/main/stage-gdrive-auth) - stage a Google Drive credential for tests that need one;
 1. [revdeps-check](https://github.com/PredictiveEcology/actions/tree/main/revdeps-check) - run reverse dependency checks for R packages;
 
+# Skipping a run
+
+Use one of GitHub's own keywords in the commit message: `[skip ci]`, `[ci skip]`,
+`[no ci]`, `[skip actions]` or `[actions skip]`. GitHub then does not start the
+run at all, on `push` and `pull_request` events.
+
+The hyphenated `[skip-ci]` is **not** one of them and is no longer honoured here.
+These workflows used to carry a job-level guard for that spelling, which only
+skipped the jobs after the run had already started.
+
 # More information on GitHub Actions
 
 <https://github.com/r-lib/actions>

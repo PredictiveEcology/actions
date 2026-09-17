@@ -64,12 +64,6 @@ permissions: {}
 ## push to the repository.
 jobs:
   render:
-    ## Honour `[skip-ci]` in the head commit message. `head_commit` is the tip of
-    ## the push, matching GitHub's own semantics. The generated file this
-    ## replaces tested `commits[0]` -- the OLDEST commit in the push -- so
-    ## `[skip-ci]` on the tip was ignored, and on a pull_request there is no
-    ## `commits` field at all, so it never applied there either. See #34.
-    if: ${{ !contains(github.event.head_commit.message, '[skip-ci]') }}
     name: Render module Rmd
     runs-on: ubuntu-latest
     permissions:
