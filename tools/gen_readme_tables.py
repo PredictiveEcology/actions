@@ -170,15 +170,27 @@ def behaviour_table(wfs):
     rows.append("| Cancels superseded PR runs " + mark(lambda d, c, t: bool(d.get("concurrency"))))
     rows.append("| Dependency source | " + " | ".join(
         dep_source(d, c, t) for d, c, t in wfs.values()) + " |")
-    rows.append("")
-    rows.append(f"{YES} the caller can set it &nbsp;&middot;&nbsp; {GAP} not available here, though "
-                "other workflows of the same kind offer it &nbsp;&middot;&nbsp; "
-                f"{NA} not applicable")
     rows.append("| Accepts secrets | " + " | ".join(
         ", ".join(f"`{s}`" for s in (c.get("secrets") or {})) or "&ndash;" for _, c, _ in wfs.values()) + " |")
     rows.append("| R versions tested | " + " | ".join(
         r_versions(d, c).replace("|", "\\|") for d, c, _ in wfs.values()) + " |")
+    # The legend goes after the last row: a blank line inside a markdown table
+    # ends it, and every row after that renders as plain text.
+    rows.append("")
+    rows.append(f"{YES} the caller can set it &nbsp;&middot;&nbsp; {GAP} not available here, though "
+                "other workflows of the same kind offer it &nbsp;&middot;&nbsp; "
+                f"{NA} not applicable")
     return "\n".join(rows)
+
+
+def validate(name, table):
+    """A blank line inside a markdown table ends it, and the rows after it render
+    as plain text. Catch that here rather than in a rendered README."""
+    lines = [l for l in table.splitlines() if l.strip()]
+    rows = [i for i, l in enumerate(lines) if l.startswith("|")]
+    if rows != list(range(rows[0], rows[0] + len(rows))):
+        raise SystemExit(f"generated {name} table has a gap between its rows")
+    return table
 
 
 def splice(text, name, table):
@@ -195,8 +207,8 @@ def splice(text, name, table):
 def main():
     wfs = reusable()
     text = README.read_text()
-    text = splice(text, "inputs", inputs_table(wfs))
-    text = splice(text, "behaviour", behaviour_table(wfs))
+    text = splice(text, "inputs", validate("inputs", inputs_table(wfs)))
+    text = splice(text, "behaviour", validate("behaviour", behaviour_table(wfs)))
     if "--check" in sys.argv:
         if text != README.read_text():
             print("README.md is out of date: run tools/gen_readme_tables.py and commit the result.")

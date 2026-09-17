@@ -110,10 +110,10 @@ What each workflow does regardless of inputs.
 | Honours `[skip-ci]` | ✅ yes | ✅ yes | ✅ yes | ✅ yes | ✅ yes | ⚠️ no | ✅ yes | ✅ yes | ✅ yes |
 | Cancels superseded PR runs | ✅ yes | ✅ yes | ⚠️ no | ✅ yes | ✅ yes | ⚠️ no | ✅ yes | ✅ yes | ✅ yes |
 | Dependency source | ✅ input, r-universe by default | ⚠️ r-universe, fixed | ⚠️ r-universe, fixed | ⚠️ r-universe, fixed | ✅ input, CRAN by default | ⚠️ CRAN only, fixed | – Require | – Require | – Require |
-
-✅ the caller can set it &nbsp;&middot;&nbsp; ⚠️ not available here, though other workflows of the same kind offer it &nbsp;&middot;&nbsp; – not applicable
 | Accepts secrets | `GOOGLEDRIVE_AUTH` | `GOOGLEDRIVE_AUTH`, `CODECOV_TOKEN` | &ndash; | `GOOGLEDRIVE_AUTH` | &ndash; | &ndash; | &ndash; | &ndash; | &ndash; |
 | R versions tested | macOS/release, ubuntu/devel, ubuntu/oldrel-1, ubuntu/release, ubuntu/release+nosuggests, windows/devel, windows/oldrel-1, windows/release + caller's `extra-config` | release | release | release | caller's `config` | release | caller's `r-version` | caller's `r-version` | caller's `r-version` |
+
+✅ the caller can set it &nbsp;&middot;&nbsp; ⚠️ not available here, though other workflows of the same kind offer it &nbsp;&middot;&nbsp; – not applicable
 
 <!-- END GENERATED: behaviour -->
 
