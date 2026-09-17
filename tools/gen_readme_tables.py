@@ -25,6 +25,18 @@ README = ROOT / "README.md"
 ORDER = ["R-CMD-check", "test-coverage", "pkgdown", "test-downstream", "revdeps",
          "citation", "render-module-rmd", "testthat-module", "pkgdown-module"]
 
+# Inputs every workflow of a kind should offer. One that is missing from a
+# workflow in its own kind is flagged, so the table shows where a caller cannot
+# set something its siblings allow. Flags clear themselves as workflows gain the
+# input; nothing here needs hand-maintaining.
+CORE = {
+    "package": ["system-deps", "pandoc", "extra-env", "dependencies", "extra-packages",
+                "post-install", "extra-repositories", "cache-version"],
+    "module": ["system-deps", "extra-apt", "r-version"],
+}
+
+YES, GAP, NA = "\u2705", "\u26a0\ufe0f", "\u2013"
+
 # Inputs worth a row, in reading order. Anything else a workflow declares is
 # appended, so a new input shows up here the first time it is generated.
 INPUT_ORDER = ["system-deps", "pandoc", "extra-env", "dependencies", "extra-packages",
@@ -54,19 +66,23 @@ def reusable():
     return {k: out[k] for k in sorted(out, key=lambda k: (ORDER.index(k) if k in ORDER else 99, k))}
 
 
+def kind(name):
+    return "module" if name.endswith("-module") or name == "render-module-rmd" else "package"
+
+
 def cell(spec):
     """One input's cell: its default, or `required` when it has none."""
     if spec is None:
-        return "yes"
+        return f"{YES} yes"
     if "default" in spec:
         d = spec["default"]
         if isinstance(d, bool):
-            return f"`{str(d).lower()}`"
+            return f"{YES} `{str(d).lower()}`"
         d = " ".join(str(d).split())
         if d == "":
-            return "`\"\"`"
-        return f"`{d}`" if len(d) <= 34 else f"`{d[:33]}`\u2026"
-    return "**required**"
+            return f"{YES} `\"\"`"
+        return f"{YES} `{d}`" if len(d) <= 30 else f"{YES} `{d[:29]}`\u2026"
+    return f"{YES} **required**"
 
 
 def inputs_table(wfs):
@@ -81,9 +97,14 @@ def inputs_table(wfs):
     rows = [head, rule]
     for n in names:
         cells = []
-        for _, call, _ in wfs.values():
+        for wf, (_, call, _) in wfs.items():
             spec = (call.get("inputs") or {}).get(n, "absent")
-            cells.append("&ndash;" if spec == "absent" else cell(spec))
+            if spec != "absent":
+                cells.append(cell(spec))
+            elif n in CORE[kind(wf)]:
+                cells.append(f"{GAP} no")
+            else:
+                cells.append(NA)
         rows.append(f"| `{n}` | " + " | ".join(cells) + " |")
     return "\n".join(rows)
 
@@ -119,12 +140,12 @@ def dep_source(doc, call, text):
     spec = (call.get("inputs") or {}).get("extra-repositories")
     if spec is not None:
         default = str(spec.get("default", ""))
-        return "input, r-universe by default" if "r-universe" in default else "input, CRAN by default"
-    if re.search(r"^\s*extra-repositories:\s*'?https://\S*r-universe", code(text), re.M):
-        return "r-universe, fixed"
+        return f"{YES} input, " + ("r-universe by default" if "r-universe" in default else "CRAN by default")
     if "install-Require@" in code(text):
-        return "Require"
-    return "CRAN only"
+        return f"{NA} Require"
+    if re.search(r"^\s*extra-repositories:\s*'?https://\S*r-universe", code(text), re.M):
+        return f"{GAP} r-universe, fixed"
+    return f"{GAP} CRAN only, fixed"
 
 
 def behaviour_table(wfs):
@@ -133,15 +154,26 @@ def behaviour_table(wfs):
         "|---" * (len(wfs) + 1) + "|",
     ]
 
-    def mark(fn):
-        return "| " + " | ".join("yes" if fn(d, c, t) else "&ndash;" for d, c, t in wfs.values()) + " |"
+    def mark(fn, gap_when_absent=lambda wf: True):
+        out = []
+        for wf, (d, c, t) in wfs.items():
+            if fn(d, c, t):
+                out.append(f"{YES} yes")
+            else:
+                out.append(f"{GAP} no" if gap_when_absent(wf) else NA)
+        return "| " + " | ".join(out) + " |"
 
-    rows.append("| Uses `setup-r-deps` " + mark(lambda d, c, t: "setup-r-deps@" in code(t)))
+    rows.append("| Uses `setup-r-deps` " + mark(lambda d, c, t: "setup-r-deps@" in code(t),
+                                                lambda wf: kind(wf) == "package"))
     rows.append("| Honours `[skip-ci]` " + mark(
         lambda d, c, t: any("skip-ci" in str(j.get("if", "")) for j in (d.get("jobs") or {}).values())))
     rows.append("| Cancels superseded PR runs " + mark(lambda d, c, t: bool(d.get("concurrency"))))
     rows.append("| Dependency source | " + " | ".join(
         dep_source(d, c, t) for d, c, t in wfs.values()) + " |")
+    rows.append("")
+    rows.append(f"{YES} the caller can set it &nbsp;&middot;&nbsp; {GAP} not available here, though "
+                "other workflows of the same kind offer it &nbsp;&middot;&nbsp; "
+                f"{NA} not applicable")
     rows.append("| Accepts secrets | " + " | ".join(
         ", ".join(f"`{s}`" for s in (c.get("secrets") or {})) or "&ndash;" for _, c, _ in wfs.values()) + " |")
     rows.append("| R versions tested | " + " | ".join(
