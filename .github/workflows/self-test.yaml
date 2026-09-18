@@ -35,6 +35,15 @@ on:
       - "tests/fixture/**"
       - ".github/workflows/self-test.yaml"
       - ".github/workflows/ecosystem-test.yaml"
+      ## The reusable workflows themselves. Without these, a PR that touches
+      ## only e.g. pkgdown.yaml runs NO self-test -- which would have made the
+      ## abi-cache-key-coverage job below useless for exactly the change it
+      ## exists to catch, since dropping a cache-version is an edit to one of
+      ## these files and nothing else.
+      - ".github/workflows/pkgdown.yaml"
+      - ".github/workflows/revdeps.yaml"
+      - ".github/workflows/test-coverage.yaml"
+      - ".github/workflows/test-downstream.yaml"
   workflow_dispatch:
 
 concurrency:
