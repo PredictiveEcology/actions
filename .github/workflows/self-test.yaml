@@ -334,3 +334,47 @@ jobs:
           ## libproj-dev does not pull in, and it is absent on the macOS runner
           ## too. The .pc file ships with the -dev package on both.
           pkg-config --modversion proj
+
+  ## A static guard for the invariant #57 restored: every REUSABLE workflow that
+  ## installs R dependencies must key its cache on the geospatial ABI -- either
+  ## by going through setup-r-deps, which composes it, or by passing a
+  ## cache-version that references the install-spatial-deps output.
+  ##
+  ## Static rather than end-to-end on purpose. The failure it guards against is
+  ## SILENT: a missing cache-version is valid YAML, the run goes green, and the
+  ## damage only surfaces later as a dlopen error in whichever consumer restored
+  ## the poisoned library. There is nothing to observe at runtime in the passing
+  ## case, so an assertion on the workflow text is the honest test.
+  abi-cache-key-coverage:
+    name: every dependency install keys on the ABI
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Assert setup-r-dependencies callers pass an ABI-bearing cache-version
+        shell: bash
+        run: |
+          set -uo pipefail
+          rc=0
+          checked=0
+          for f in .github/workflows/*.yaml; do
+            ## Skip this file: it quotes both patterns below as literals, so it
+            ## would match itself. It is not a reusable workflow and installs
+            ## dependencies only through ./setup-r-deps, which keys on the ABI.
+            [ "$(basename "$f")" = "self-test.yaml" ] && continue
+            grep -q 'r-lib/actions/setup-r-dependencies@' "$f" || continue
+            checked=$((checked + 1))
+            if grep -q 'cache-version:.*steps\.spatial\.outputs\.abi' "$f"; then
+              echo "ok   $(basename "$f")"
+            else
+              echo "::error file=$f::calls setup-r-dependencies without an ABI-bearing cache-version (see #48, #57)"
+              rc=1
+            fi
+          done
+          ## A silent pass because the scan matched nothing would defeat the
+          ## point: this guard must fail loudly if its own premise stops holding.
+          if [ "$checked" -eq 0 ]; then
+            echo "::error::found no setup-r-dependencies callers to check -- has the scan gone stale?"
+            rc=1
+          fi
+          exit "$rc"
