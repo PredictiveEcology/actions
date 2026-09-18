@@ -1,5 +1,21 @@
 # PredictiveEcology/actions (development)
 
+- **`render-module-rmd.yaml` now also commits `<module>.md`, not just `<module>.html`.**
+  Most module `.Rmd`s set `keep_md: yes`, so `rmarkdown::render()` already leaves a
+  `<module>.md` beside the `.html` -- and that `.md` is what the repo's `README.md`
+  symlinks to. The workflow uploaded and staged only the `.html`, so the rendered manual
+  stayed current while the repo front page drifted: Biomass_borealDataPrep's README still
+  documented `deciduousCoverDiscount` and `coverPctToBiomassPctModel` after both had been
+  removed. Checked 8 caller repos: 7 set `keep_md` and ship a `.md`; the `git add` is
+  guarded by `[ -f ]` and `if-no-files-found` fires only when nothing matches, so the
+  eighth is unaffected.
+  **Expect one large auto-commit per module** the first time each one pushes to
+  `main`/`development` after this, since several `.md` files are years stale.
+  Note this does not fix the badge images in those READMEs: the `.Rmd` badge chunk uses
+  `normPath()`, so the `.md` carries an absolute path from whichever machine rendered it
+  (currently `/home/achubaty/...`, afterwards `/home/runner/work/...`). Both are broken on
+  GitHub; the fix belongs in the badge chunk that SpaDES.core's module template generates.
+
 - **`testthat-module.yaml` and `pkgdown-module.yaml` no longer install
   SpaDES.core@development explicitly.** `install-SpaDES` installs
   `SpaDES.experiment@development`, whose `DESCRIPTION` has

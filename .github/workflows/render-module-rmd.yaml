@@ -169,10 +169,18 @@ jobs:
           m <- Sys.getenv("MODULE")
           rmarkdown::render(paste0(m, ".Rmd"), encoding = "UTF-8")
 
+      ## The .md as well as the .html. A module .Rmd that sets `keep_md: yes` -- most
+      ## of them -- leaves `<module>.md` beside the .html, and that .md is what the
+      ## repo's README.md symlinks to. Uploading only the .html meant the rendered
+      ## manual stayed current while the repo front page drifted: Biomass_borealDataPrep's
+      ## README still documented two parameters that had been removed. `if-no-files-found`
+      ## fires only when NOTHING matches, so a module without `keep_md` is unaffected.
       - uses: actions/upload-artifact@v4
         with:
           name: module-html
-          path: ${{ inputs.module }}.html
+          path: |
+            ${{ inputs.module }}.html
+            ${{ inputs.module }}.md
           if-no-files-found: error
           retention-days: 1
 
@@ -182,7 +190,7 @@ jobs:
     ## `github.ref` is refs/pull/N/merge and the push cannot succeed -- it failed
     ## silently every time, swallowed by `|| echo "No changes to commit"`.
     if: ${{ github.event_name == 'push' }}
-    name: Commit html (only pushes to main/development)
+    name: Commit rendered files (only pushes to main/development)
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -205,6 +213,11 @@ jobs:
           git config --local user.name "github-actions[bot]"
           git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add "${MODULE}.html"
+          ## Only when the module renders one; `git add` on a missing path fails, and
+          ## under `set -e` that would take the whole job down for those modules.
+          if [ -f "${MODULE}.md" ]; then
+            git add "${MODULE}.md"
+          fi
           ## `git commit` exits non-zero when nothing is staged, which is the
           ## normal no-change case -- exit cleanly rather than pushing.
           git commit -m "Re-build ${MODULE}.Rmd" || exit 0
