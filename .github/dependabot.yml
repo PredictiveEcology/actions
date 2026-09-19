@@ -1,0 +1,140 @@
+# Keeps this repository's own pins on third-party actions current.
+#
+# This does NOT change how callers reference this repository. The README's
+# "Which ref to use" section says use `@main`, and that stays true: the
+# `ignore` rule on each entry below stops Dependabot rewriting the
+# `PredictiveEcology/actions/...@main` self-references in these files.
+#
+# Expect few pull requests. Every third-party pin here floats on a major
+# tag (`actions/checkout@v7`, `r-lib/actions/setup-r@v2`, ...), so patches
+# and minors already arrive through the moving tag and Dependabot stays
+# quiet. It opens a pull request only when a major moves -- checkout v7 to
+# v8 -- which is the case that needs a human to look at it anyway.
+#
+# Why one entry per composite action directory, rather than just "/":
+# with `directory: "/"` Dependabot reads `.github/workflows/` and an
+# `action.yml` in the repository root, and nothing else. Composite actions
+# in subdirectories are invisible to it unless each directory is named
+# here (dependabot/dependabot-core#6949). The shorter `directories:` glob
+# form would collapse these into one entry, but it currently reports the
+# same workflow file twice and raises duplicate pull requests
+# (dependabot/dependabot-core#10884).
+#
+# All seven composite actions are listed, including the five that have no
+# `uses:` today. Each already has an `action.yaml`, so an entry for one
+# without dependencies is simply a check that finds nothing -- and it
+# means adding a `uses:` to any of them later is covered without anyone
+# remembering to edit this file.
+#
+# The filename must be `dependabot.yml`; GitHub does not read
+# `dependabot.yaml`, despite the `.yaml` used for workflows in this repo.
+
+version: 2
+
+updates:
+  # Reusable workflows: .github/workflows/*.yaml
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: ci
+      include: scope
+    groups:
+      actions:
+        patterns:
+          - actions/*
+      r-lib-actions:
+        patterns:
+          - r-lib/actions/*
+    ignore:
+      # `@main` is deliberate; see README, "Which ref to use".
+      - dependency-name: PredictiveEcology/actions*
+
+  # Composite actions, one entry each.
+  - package-ecosystem: github-actions
+    directory: /install-Require
+    schedule:
+      interval: weekly
+      day: monday
+    commit-message:
+      prefix: ci
+      include: scope
+    ignore:
+      - dependency-name: PredictiveEcology/actions*
+
+  - package-ecosystem: github-actions
+    directory: /install-Rmd-pkgs
+    schedule:
+      interval: weekly
+      day: monday
+    commit-message:
+      prefix: ci
+      include: scope
+    ignore:
+      - dependency-name: PredictiveEcology/actions*
+
+  - package-ecosystem: github-actions
+    directory: /install-SpaDES
+    schedule:
+      interval: weekly
+      day: monday
+    commit-message:
+      prefix: ci
+      include: scope
+    ignore:
+      - dependency-name: PredictiveEcology/actions*
+
+  - package-ecosystem: github-actions
+    directory: /install-spatial-deps
+    schedule:
+      interval: weekly
+      day: monday
+    commit-message:
+      prefix: ci
+      include: scope
+    ignore:
+      - dependency-name: PredictiveEcology/actions*
+
+  - package-ecosystem: github-actions
+    directory: /revdeps-check
+    schedule:
+      interval: weekly
+      day: monday
+    commit-message:
+      prefix: ci
+      include: scope
+    groups:
+      actions:
+        patterns:
+          - actions/*
+    ignore:
+      - dependency-name: PredictiveEcology/actions*
+
+  - package-ecosystem: github-actions
+    directory: /setup-r-deps
+    schedule:
+      interval: weekly
+      day: monday
+    commit-message:
+      prefix: ci
+      include: scope
+    groups:
+      r-lib-actions:
+        patterns:
+          - r-lib/actions/*
+    ignore:
+      - dependency-name: PredictiveEcology/actions*
+
+  - package-ecosystem: github-actions
+    directory: /stage-gdrive-auth
+    schedule:
+      interval: weekly
+      day: monday
+    commit-message:
+      prefix: ci
+      include: scope
+    ignore:
+      - dependency-name: PredictiveEcology/actions*

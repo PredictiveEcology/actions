@@ -73,6 +73,27 @@ no reusable workflow fits. For details and example usage see each action's
 1. [stage-gdrive-auth](https://github.com/PredictiveEcology/actions/tree/main/stage-gdrive-auth) - stage a Google Drive credential for tests that need one;
 1. [revdeps-check](https://github.com/PredictiveEcology/actions/tree/main/revdeps-check) - run reverse dependency checks for R packages;
 
+# Keeping the pins current
+
+`.github/dependabot.yml` watches the third-party actions this repository uses --
+`actions/checkout`, `r-lib/actions/*`, `codecov/codecov-action`, and so on -- and
+opens a pull request when one of them needs attention.
+
+That is the other side of the advice above, not a contradiction of it. Callers
+follow `@main` because this repository is tested as a whole and fixes should reach
+them. Inside it, the pins on other people's actions are ordinary dependencies, and
+something has to notice when they move. The `PredictiveEcology/actions/...@main`
+self-references in these files are on Dependabot's ignore list, so `@main` is left
+alone.
+
+Those pins all float on a major tag, so patches and minor releases already arrive
+without a pull request. Dependabot speaks up only when a major moves, which is when
+someone has to read a changelog anyway.
+
+Each composite action directory is listed separately in that file, because
+Dependabot does not look inside subdirectories on its own. The seven that exist are
+all listed; a new one needs its own entry adding.
+
 # More information on GitHub Actions
 
 <https://github.com/r-lib/actions>
