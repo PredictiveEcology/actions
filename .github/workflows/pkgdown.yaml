@@ -57,35 +57,41 @@ jobs:
 
       - uses: r-lib/actions/setup-pandoc@v2
 
-      # Stock Noble apt (replicates reproducible). The ubuntugis-unstable PPA
-      # used by install-spatial-deps installs libgdal37, which is ABI-incompatible
-      # with the binaries in Posit's noble cache and breaks geospatial loads.
-      - name: Install spatial deps (Linux, stock Noble)
-        # Short acquire timeouts + retries so a stalled GitHub apt mirror
-        # (azure.archive.ubuntu.com intermittently goes Ign) aborts in ~30s and
-        # fails over instead of hanging the step. See R-CMD-check.yaml for the
-        # observed failure.
-        timeout-minutes: 15
-        run: |
-          printf 'Acquire::Retries "5";\nAcquire::http::Timeout "30";\nAcquire::https::Timeout "30";\n' \
-            | sudo tee /etc/apt/apt.conf.d/99-ci-timeouts > /dev/null
-          sudo DEBIAN_FRONTEND=noninteractive apt-get update -y
-          sudo DEBIAN_FRONTEND=noninteractive apt-get install -f -y || true
-          sudo DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a apt-get install -y --fix-missing \
-            libudunits2-dev libgdal-dev libgeos-dev libproj-dev libsqlite3-dev
-        shell: bash
+      # Delegated to install-spatial-deps rather than inlined. The comment this
+      # replaces said the action was unusable because it added the
+      # ubuntugis-unstable PPA (libgdal37, ABI-incompatible with Posit's
+      # binaries); the action dropped that PPA, so the objection is gone and the
+      # duplicated apt logic was only a source of drift -- which is how that PPA
+      # survived in one copy for months after the workflows had rejected it.
+      # The action also retries/caps each apt call and reports the geospatial
+      # ABI, which the dependency cache key below needs.
+      - name: Install geospatial system dependencies
+        id: spatial
+        uses: PredictiveEcology/actions/install-spatial-deps@main
 
       - uses: r-lib/actions/setup-r@v2
         with:
           extra-repositories: 'https://PredictiveEcology.r-universe.dev/'
           Ncpus: 2
-          # Posit's noble binaries are built against stock libgdal34 (matches the
-          # apt step). r-universe terra is built against libgdal37 and won't load
-          # here -- so prefer RSPM, same as R-CMD-check.
+          # Prefer P3M: it serves binaries built for the runner's own Ubuntu
+          # release, so they match the system GDAL installed above. r-universe
+          # builds against a different release, which can leave terra/sf linked
+          # to a GDAL soname this runner does not have. Deliberately phrased
+          # without version numbers so it survives the next runner bump.
           use-public-rspm: true
 
+      # Cache key carries the geospatial ABI, same as setup-r-deps (#48).
+      # Without it the restore-key is just <os>-<R>-<arch>-1-, which matches the
+      # most recent library ANY job saved in that pool -- including one linked
+      # against a GDAL this runner no longer has. That restores cleanly and
+      # fails later at dlopen (CBMutils#91). The `ubuntu-latest` flip to Ubuntu
+      # 26.04 moves GDAL 3.8/libgdal34 -> 3.12/libgdal38 org-wide on one day,
+      # which is precisely that scenario (#57).
+      # Falls back to a bare "1" -- upstream's own default -- when there is no
+      # ABI, so those keys stay byte-identical to today's.
       - uses: r-lib/actions/setup-r-dependencies@v2
         with:
+          cache-version: ${{ steps.spatial.outputs.abi && format('1-{0}', steps.spatial.outputs.abi) || '1' }}
           extra-packages: |
             any::pkgdown
             local::.
