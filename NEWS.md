@@ -1,5 +1,17 @@
 # PredictiveEcology/actions (development)
 
+- **Dependabot now watches this repository's pins on third-party actions.**
+  `.github/dependabot.yml` checks `.github/workflows/` and each composite action
+  directory weekly. Every pin floats on a major tag -- `actions/checkout@v7`,
+  `r-lib/actions/setup-r@v2` -- so patches and minor releases already arrive through
+  the moving tag, and the only pull requests it raises are major bumps such as
+  checkout v7 to v8. Nothing changes for callers: the
+  `PredictiveEcology/actions/...@main` self-references are on the `ignore` list, so
+  `@main` remains the ref to use. The seven composite action directories are listed
+  individually because `directory: "/"` covers only `.github/workflows/` and an
+  `action.yml` in the repository root -- subdirectories are invisible to Dependabot
+  unless named (dependabot/dependabot-core#6949).
+
 - **`render-module-rmd.yaml` now also commits `<module>.md`, not just `<module>.html`.**
   Most module `.Rmd`s set `keep_md: yes`, so `rmarkdown::render()` already leaves a
   `<module>.md` beside the `.html` -- and that `.md` is what the repo's `README.md`
