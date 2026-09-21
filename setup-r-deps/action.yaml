@@ -126,7 +126,15 @@ runs:
         r-version: ${{ inputs.r-version }}
         extra-repositories: ${{ inputs.extra-repositories }}
         Ncpus: ${{ inputs.ncpus }}
-        use-public-rspm: ${{ inputs.use-public-rspm }}
+        ## `always` on macOS, not `true`. With `true`, setup-r turns Posit Package Manager on for
+        ## Linux and Windows but on macOS only for Posit's own GitHub orgs, so our macOS legs took
+        ## binaries from the CRAN mirror. In September 2026 CRAN began serving newly built macOS
+        ## binaries zstd-compressed (knitr_1.52.tgz and terra_1.9-50.tgz start 28 b5 2f fd; older
+        ## builds are gzip, 1f 8b). pak detects the archive type from those bytes and knows gzip,
+        ## bzip2 and xz only, so dependency installation stops with "Cannot extract ..., unknown
+        ## archive type" (r-lib/pak#915). Package Manager serves the same versions as gzip.
+        ## Revisit when pak reads zstd.
+        use-public-rspm: ${{ (runner.os == 'macOS' && inputs.use-public-rspm == 'true') && 'always' || inputs.use-public-rspm }}
 
     # THE fix for inheriting a library linked against libraries the runner no
     # longer has. `setup-r-dependencies` caches $R_LIBS_USER under an exact key
