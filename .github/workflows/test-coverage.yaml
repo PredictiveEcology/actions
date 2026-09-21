@@ -199,8 +199,19 @@ jobs:
       - uses: r-lib/actions/setup-r-dependencies@v2
         with:
           dependencies: ${{ inputs.dependencies }}
+          # xml2 is explicit because covr only SUGGESTS it, so `any::covr`
+          # does not bring it: pak installs hard dependencies only. The
+          # coverage step calls covr::to_cobertura(), which opens with
+          # loadNamespace("xml2") and dies without it (#45 introduced that
+          # call when the upload moved to codecov-action).
+          # Until now this workflow worked by accident, on whatever xml2 the
+          # package under test happened to drag in -- roxygen2 Imports it, so
+          # repos suggesting roxygen2 were fine and SpaDES.tools, which does
+          # not, failed. A reusable workflow must not depend on its caller's
+          # closure to supply its own tooling.
           extra-packages: |
             any::covr
+            any::xml2
             ${{ inputs.extra-packages }}
 
       - name: Install additional package dependencies
