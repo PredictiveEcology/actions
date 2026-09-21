@@ -1,5 +1,11 @@
 # PredictiveEcology/actions (development)
 
+- **`setup-r-deps`: macOS legs now take binaries from Posit Package Manager.** CRAN began serving
+  newly built macOS binaries zstd-compressed in September 2026 (`knitr_1.52.tgz`, `terra_1.9-50.tgz`),
+  and pak reads gzip, bzip2 and xz only, so every macOS dependency install stopped with "Cannot
+  extract ..., unknown archive type" (r-lib/pak#915). `use-public-rspm: true` never applied to macOS
+  outside Posit's own orgs; the action now passes `always` there. Package Manager serves the same
+  versions as gzip. `use-public-rspm: false` is still honoured. Revisit when pak reads zstd.
 - **`render-module-rmd.yaml` now also commits `<module>.md`, not just `<module>.html`.**
   Most module `.Rmd`s set `keep_md: yes`, so `rmarkdown::render()` already leaves a
   `<module>.md` beside the `.html` -- and that `.md` is what the repo's `README.md`
