@@ -1,0 +1,45 @@
+## Keep the README's capability tables honest.
+##
+## The "Inputs at a glance" and "Behaviour at a glance" tables are generated
+## from the workflow files themselves, so the README cannot drift from what the
+## workflows actually accept and do. This job only CHECKS; it never pushes.
+## When it fails, run `python3 tools/gen_readme_tables.py` and commit the result.
+name: README tables
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/*.yaml
+      - .github/workflows/*.yml
+      - tools/gen_readme_tables.py
+      - README.md
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/*.yaml
+      - .github/workflows/*.yml
+      - tools/gen_readme_tables.py
+      - README.md
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  check:
+    name: README tables are up to date
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      ## PyYAML is not guaranteed to be present in the runner image's Python.
+      - run: pip install --quiet pyyaml
+        shell: bash
+
+      - run: python3 tools/gen_readme_tables.py --check
+        shell: bash
