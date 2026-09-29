@@ -1,0 +1,25 @@
+name: 'unpin-remotes'
+description: >-
+  Remove one package from the Remotes field of a DESCRIPTION, leaving every
+  other field byte-for-byte as it was. Fails if any other field's value
+  changes.
+author: 'Eliot McIntire'
+
+inputs:
+  description:
+    description: "Path to the DESCRIPTION file to rewrite in place."
+    required: true
+  package:
+    description: "Package name to drop from Remotes, e.g. `reproducible`. Compared exactly, ignoring owner and @ref."
+    required: true
+
+runs:
+  using: "composite"
+  steps:
+    ## Inputs go through `env:` rather than being pasted into the script source.
+    - name: Unpin ${{ inputs.package }} in Remotes
+      shell: bash
+      env:
+        DESCRIPTION_PATH: ${{ inputs.description }}
+        PKG: ${{ inputs.package }}
+      run: Rscript "${{ github.action_path }}/unpin-remotes.R" "$DESCRIPTION_PATH" "$PKG"

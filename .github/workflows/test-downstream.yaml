@@ -202,40 +202,10 @@ jobs:
       # alone -- deleting whole lines would take neighbouring refs with it
       # when Remotes is written on one line, which is legal DCF.
       - name: Unpin ${{ steps.pkg.outputs.name }} in the downstream's Remotes
-        shell: Rscript {0}
-        env:
-          PKG: ${{ steps.pkg.outputs.name }}
-        run: |
-          pkg <- Sys.getenv("PKG")
-          f <- "_downstream/DESCRIPTION"
-          ln <- readLines(f)
-          start <- grep("^Remotes:", ln)
-          if (!length(start)) {
-            cat("No Remotes: field -- nothing to unpin.\n")
-          } else {
-            ## Field block: from "Remotes:" to just before the next field.
-            isField <- grepl("^[A-Za-z][A-Za-z0-9@._-]*:", ln)
-            after <- which(isField & seq_along(ln) > start[1])
-            end <- if (length(after)) after[1] - 1L else length(ln)
-            body <- sub("^Remotes:", "", paste(ln[start[1]:end], collapse = " "))
-            refs <- trimws(unlist(strsplit(body, ",")))
-            refs <- refs[nzchar(refs)]
-            ## Compare package names exactly rather than pattern-matching the
-            ## ref: no escaping to get wrong, and "SpaDES.tools" cannot match
-            ## "SpaDES.toolsExtra". Drops "@ref", then "owner/".
-            refPkg <- sub("^.*/", "", sub("@.*$", "", refs))
-            keep <- refs[refPkg != pkg]
-            cat("Remotes before:", paste(refs, collapse = ", "), "\n")
-            cat("Remotes after :",
-                if (length(keep)) paste(keep, collapse = ", ") else "<field removed>", "\n")
-            repl <- if (length(keep))
-              c("Remotes:", paste0("    ", keep,
-                                   c(rep(",", length(keep) - 1L), ""))) else character()
-            writeLines(c(ln[seq_len(start[1] - 1L)], repl,
-                         if (end < length(ln)) ln[(end + 1L):length(ln)]), f)
-            ## Re-parse: a malformed rewrite must fail here, not at install.
-            stopifnot(nrow(read.dcf(f)) == 1L)
-          }
+        uses: PredictiveEcology/actions/unpin-remotes@main
+        with:
+          description: _downstream/DESCRIPTION
+          package: ${{ steps.pkg.outputs.name }}
 
       # Resolve the DOWNSTREAM's dependencies (working-directory), and supply
       # the package under test from the checkout rather than any repository.

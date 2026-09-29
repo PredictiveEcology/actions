@@ -28,6 +28,7 @@ on:
     paths:
       - "setup-r-deps/**"
       - "stage-gdrive-auth/**"
+      - "unpin-remotes/**"
       - "install-spatial-deps/**"
       - "install-Require/**"
       - "install-Rmd-pkgs/**"
@@ -343,6 +344,80 @@ jobs:
           ## libproj-dev does not pull in, and it is absent on the macOS runner
           ## too. The .pc file ships with the -dev package on both.
           pkg-config --modversion proj
+
+  ## Pure logic, no network. The regression this guards: the end of `Remotes:`
+  ## was found with a field-name pattern lacking "/", so a following
+  ## `Config/roxygen2/version:` was folded into the Remotes value and pak then
+  ## failed on it. The rewrite was still valid DCF, so only an explicit check
+  ## on the other fields (in the action) and on the bytes (here) catches it.
+  unpin-remotes:
+    name: unpin-remotes (${{ matrix.case.name }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        case:
+          - {name: "roxygen field after Remotes", expect: "PredictiveEcology/Require@development,PredictiveEcology/SpaDES.core@development"}
+          - {name: "one-line Remotes",            expect: "a/b@x,c/d@y"}
+          - {name: "Remotes is last field",       expect: "a/b@x,c/d@y"}
+          - {name: "only ref",                    expect: ""}
+          - {name: "no Remotes",                  expect: ""}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: r-lib/actions/setup-r@v2
+
+      - name: Write the fixture
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "${{ matrix.case.name }}" in
+            "roxygen field after Remotes")
+              printf '%s\n' 'Package: fx' 'Version: 1.0' 'Imports: cli' 'Remotes:' \
+                '    PredictiveEcology/Require@development,' \
+                '    PredictiveEcology/reproducible@development,' \
+                '    PredictiveEcology/SpaDES.core@development' \
+                'Config/roxygen2/version: 8.1.0' 'Encoding: UTF-8' > DESCRIPTION ;;
+            "one-line Remotes")
+              printf '%s\n' 'Package: fx' 'Remotes: a/b@x, o/reproducible@dev, c/d@y' \
+                'Config/roxygen2/version: 8.1.0' > DESCRIPTION ;;
+            "Remotes is last field")
+              printf '%s\n' 'Package: fx' 'Version: 1.0' 'Remotes:' \
+                '    a/b@x,' '    reproducible@dev,' '    c/d@y' > DESCRIPTION ;;
+            "only ref")
+              printf '%s\n' 'Package: fx' 'Remotes:' '    o/reproducible@dev' \
+                'Config/roxygen2/version: 8.1.0' 'Encoding: UTF-8' > DESCRIPTION ;;
+            "no Remotes")
+              printf '%s\n' 'Package: fx' 'Imports: cli' \
+                'Config/roxygen2/version: 8.1.0' > DESCRIPTION ;;
+          esac
+          cp DESCRIPTION DESCRIPTION.orig
+
+      - uses: ./unpin-remotes
+        with:
+          description: DESCRIPTION
+          package: reproducible
+
+      - name: Assert Remotes and that nothing else moved
+        shell: bash
+        env:
+          EXPECT: ${{ matrix.case.expect }}
+        run: |
+          set -euo pipefail
+          cat DESCRIPTION
+          got="$(Rscript -e 'd <- read.dcf("DESCRIPTION"); cat(if ("Remotes" %in% colnames(d)) paste(trimws(strsplit(d[1, "Remotes"], ",")[[1]]), collapse = ",") else "")')"
+          if [ "$got" != "$EXPECT" ]; then
+            echo "::error::Remotes is '$got', expected '$EXPECT'"; exit 1
+          fi
+          ## Every line outside the Remotes field must be byte-identical.
+          strip() { awk '/^Remotes:/ {skip=1; next} /^[^ \t]/ {skip=0} !skip' "$1"; }
+          if ! diff <(strip DESCRIPTION.orig) <(strip DESCRIPTION); then
+            echo "::error::a field other than Remotes changed"; exit 1
+          fi
+          if [ "${{ matrix.case.name }}" = "no Remotes" ]; then
+            cmp DESCRIPTION.orig DESCRIPTION
+          fi
+          echo "OK"
 
   ## A static guard for the invariant #57 restored: every REUSABLE workflow that
   ## installs R dependencies must key its cache on the geospatial ABI -- either
