@@ -75,7 +75,6 @@ permissions: {}
 ## must not share a job with a token that can push to the repository.
 jobs:
   build:
-    if: ${{ !contains(github.event.head_commit.message, '[skip-ci]') }}
     name: Build pkgdown site
     runs-on: ubuntu-latest
     permissions:

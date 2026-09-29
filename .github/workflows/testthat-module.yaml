@@ -76,10 +76,6 @@ permissions: {}
 
 jobs:
   testthat-module:
-    ## `head_commit` is the tip of the push, matching GitHub's own semantics. The
-    ## generated workflows this pattern replaces tested `commits[0]` -- the OLDEST
-    ## commit -- so `[skip-ci]` on the tip was ignored (#34).
-    if: ${{ !contains(github.event.head_commit.message, '[skip-ci]') }}
     name: Test module
     runs-on: ubuntu-latest
     permissions:
