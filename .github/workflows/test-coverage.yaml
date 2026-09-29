@@ -206,8 +206,10 @@ jobs:
         with:
           cache-version: ${{ steps.spatial.outputs.abi && format('1-{0}', steps.spatial.outputs.abi) || '1' }}
           dependencies: ${{ inputs.dependencies }}
+          # covr only suggests xml2, but covr::to_cobertura() needs it.
           extra-packages: |
             any::covr
+            any::xml2
             ${{ inputs.extra-packages }}
 
       - name: Install additional package dependencies
