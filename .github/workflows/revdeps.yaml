@@ -106,6 +106,7 @@ jobs:
       - uses: r-lib/actions/setup-pandoc@v2
 
       - uses: PredictiveEcology/actions/install-spatial-deps@main
+        id: spatial
 
       - uses: r-lib/actions/setup-r@v2
         with:
@@ -117,8 +118,18 @@ jobs:
           ## repositories instead.
           use-public-rspm: false
 
+      # Cache key carries the geospatial ABI, same as setup-r-deps (#48).
+      # Without it the restore-key is just <os>-<R>-<arch>-1-, which matches the
+      # most recent library ANY job saved in that pool -- including one linked
+      # against a GDAL this runner no longer has. That restores cleanly and
+      # fails later at dlopen (CBMutils#91). The `ubuntu-latest` flip to Ubuntu
+      # 26.04 moves GDAL 3.8/libgdal34 -> 3.12/libgdal38 org-wide on one day,
+      # which is precisely that scenario (#57).
+      # Falls back to a bare "1" -- upstream's own default -- when there is no
+      # ABI, so those keys stay byte-identical to today's.
       - uses: r-lib/actions/setup-r-dependencies@v2
         with:
+          cache-version: ${{ steps.spatial.outputs.abi && format('1-{0}', steps.spatial.outputs.abi) || '1' }}
           extra-packages: |
             any::rcmdcheck
             ${{ inputs.extra-packages }}
