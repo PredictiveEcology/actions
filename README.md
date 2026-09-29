@@ -107,7 +107,6 @@ What each workflow does regardless of inputs.
 | Behaviour | `R-CMD-check` | `test-coverage` | `pkgdown` | `test-downstream` | `revdeps` | `citation` | `render-module-rmd` | `testthat-module` | `pkgdown-module` |
 |---|---|---|---|---|---|---|---|---|---|
 | Uses `setup-r-deps` | ✅ yes | ⚠️ no | ⚠️ no | ⚠️ no | ⚠️ no | ✅ yes | – | – | – |
-| Honours `[skip-ci]` | ✅ yes | ✅ yes | ✅ yes | ✅ yes | ✅ yes | ⚠️ no | ✅ yes | ✅ yes | ✅ yes |
 | Cancels superseded PR runs | ✅ yes | ✅ yes | ⚠️ no | ✅ yes | ✅ yes | ⚠️ no | ✅ yes | ✅ yes | ✅ yes |
 | Dependency source | ✅ input, r-universe by default | ⚠️ r-universe, fixed | ⚠️ r-universe, fixed | ⚠️ r-universe, fixed | ✅ input, CRAN by default | ⚠️ CRAN only, fixed | – Require | – Require | – Require |
 | Accepts secrets | `GOOGLEDRIVE_AUTH` | `GOOGLEDRIVE_AUTH`, `CODECOV_TOKEN` | &ndash; | `GOOGLEDRIVE_AUTH` | &ndash; | &ndash; | &ndash; | &ndash; | &ndash; |
@@ -133,6 +132,7 @@ no reusable workflow fits. For details and example usage see each action's
 1. [install-spatial-deps](https://github.com/PredictiveEcology/actions/tree/main/install-spatial-deps) - system dependencies for geospatial packages on Ubuntu Linux and macOS;
 1. [setup-r-deps](https://github.com/PredictiveEcology/actions/tree/main/setup-r-deps) - R, pandoc, system deps and the package dependency cache in one step;
 1. [stage-gdrive-auth](https://github.com/PredictiveEcology/actions/tree/main/stage-gdrive-auth) - stage a Google Drive credential for tests that need one;
+1. [unpin-remotes](https://github.com/PredictiveEcology/actions/tree/main/unpin-remotes) - drop one package from a DESCRIPTION's `Remotes`, leaving other fields untouched;
 1. [revdeps-check](https://github.com/PredictiveEcology/actions/tree/main/revdeps-check) - run reverse dependency checks for R packages;
 
 # Skipping a run
