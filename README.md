@@ -133,6 +133,7 @@ no reusable workflow fits. For details and example usage see each action's
 1. [install-spatial-deps](https://github.com/PredictiveEcology/actions/tree/main/install-spatial-deps) - system dependencies for geospatial packages on Ubuntu Linux and macOS;
 1. [setup-r-deps](https://github.com/PredictiveEcology/actions/tree/main/setup-r-deps) - R, pandoc, system deps and the package dependency cache in one step;
 1. [stage-gdrive-auth](https://github.com/PredictiveEcology/actions/tree/main/stage-gdrive-auth) - stage a Google Drive credential for tests that need one;
+1. [unpin-remotes](https://github.com/PredictiveEcology/actions/tree/main/unpin-remotes) - drop one package from a DESCRIPTION's `Remotes`, leaving other fields untouched;
 1. [revdeps-check](https://github.com/PredictiveEcology/actions/tree/main/revdeps-check) - run reverse dependency checks for R packages;
 
 # More information on GitHub Actions
