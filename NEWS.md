@@ -12,6 +12,29 @@
   `action.yml` in the repository root -- subdirectories are invisible to Dependabot
   unless named (dependabot/dependabot-core#6949).
 
+- **The `[skip-ci]` guard is removed from every workflow.** GitHub already skips a
+  run for `[skip ci]`, `[ci skip]`, `[no ci]`, `[skip actions]` and `[actions skip]`,
+  and it does so before any run starts. The hyphenated `[skip-ci]` is a local
+  convention GitHub does not recognise, so honouring it needed a job-level `if:` in
+  eight workflows, which could only skip the jobs once the run was already going.
+  Commit messages using `[skip-ci]` will now run CI: use one of the keywords above
+  instead.
+
+- **`test-downstream.yaml`: unpinning the package under test no longer swallows the field after `Remotes:`.**
+  The end of `Remotes:` was found with a field-name pattern that lacks `/`, so a following
+  `Config/roxygen2/version: 8.1.0` was folded into the Remotes value and pak failed with
+  "Can't find reference @development Config/roxygen2/version: 8.1.0" (reproducible#619,
+  SpaDES.project job). The rewrite was still valid DCF, so the `read.dcf` check passed. The logic
+  now lives in the new `unpin-remotes` composite action, uses DCF's own rule (a field starts on a
+  non-empty line with no leading whitespace), and fails if any field other than `Remotes` changes
+  value. `self-test.yaml` covers five fixtures.
+
+- **`setup-r-deps`: macOS legs now take binaries from Posit Package Manager.** CRAN began serving
+  newly built macOS binaries zstd-compressed in September 2026 (`knitr_1.52.tgz`, `terra_1.9-50.tgz`),
+  and pak reads gzip, bzip2 and xz only, so every macOS dependency install stopped with "Cannot
+  extract ..., unknown archive type" (r-lib/pak#915). `use-public-rspm: true` never applied to macOS
+  outside Posit's own orgs; the action now passes `always` there. Package Manager serves the same
+  versions as gzip. `use-public-rspm: false` is still honoured. Revisit when pak reads zstd.
 - **`render-module-rmd.yaml` now also commits `<module>.md`, not just `<module>.html`.**
   Most module `.Rmd`s set `keep_md: yes`, so `rmarkdown::render()` already leaves a
   `<module>.md` beside the `.html` -- and that `.md` is what the repo's `README.md`

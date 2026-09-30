@@ -120,19 +120,6 @@ concurrency:
 
 jobs:
   test-downstream:
-    ## Honour `[skip-ci]` in the head commit message, org-wide. GitHub stops a
-    ## run itself for its own keywords -- `[skip ci]`, `[ci skip]`, `[no ci]`,
-    ## `[skip actions]`, `[actions skip]` -- but the hyphenated `[skip-ci]` is a
-    ## PE convention it does not know about, so it needs this guard. Several
-    ## callers carried their own copy before moving to these workflows; keeping
-    ## it here means they do not have to.
-    ##
-    ## `head_commit` is the tip of the push, matching GitHub's own semantics
-    ## (Require's hand-rolled version tested `commits[0]`, the OLDEST commit in
-    ## the push -- so a `[skip-ci]` on the tip of a multi-commit push used to be
-    ## ignored). It is null on pull_request and schedule events, and
-    ## `contains(null, ...)` is false, so those always run.
-    if: ${{ !contains(github.event.head_commit.message, '[skip-ci]') }}
     runs-on: ubuntu-latest
 
     name: ${{ matrix.downstream.repo }}
@@ -168,19 +155,14 @@ jobs:
       - if: steps.pandoc1.outcome == 'failure'
         uses: r-lib/actions/setup-pandoc@v2
 
-      # Same rationale as R-CMD-check.yaml: no ubuntugis-unstable PPA (ABI
-      # mismatch against Posit's noble binaries), plus guards against the two
-      # known Ubuntu-24.04 apt hangs (interactive needrestart/debconf, and a
-      # stalled mirror with no per-connection timeout).
+      # Delegated to install-spatial-deps rather than inlined: one copy of the
+      # apt logic, and the action reports the geospatial ABI that the dependency
+      # cache key below needs. It keeps the same guards this block had -- the
+      # noninteractive needrestart/debconf answer and per-connection acquire
+      # timeouts -- and adds a retry around each apt call.
       - name: Install geospatial system dependencies
-        timeout-minutes: 15
-        shell: bash
-        run: |
-          printf 'Acquire::Retries "5";\nAcquire::http::Timeout "30";\nAcquire::https::Timeout "30";\n' \
-            | sudo tee /etc/apt/apt.conf.d/99-ci-timeouts > /dev/null
-          sudo DEBIAN_FRONTEND=noninteractive apt-get update -y
-          sudo DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a apt-get install -y \
-            libudunits2-dev libgdal-dev libgeos-dev libproj-dev libsqlite3-dev
+        id: spatial
+        uses: PredictiveEcology/actions/install-spatial-deps@main
 
       - uses: r-lib/actions/setup-r@v2
         with:
@@ -207,40 +189,10 @@ jobs:
       # alone -- deleting whole lines would take neighbouring refs with it
       # when Remotes is written on one line, which is legal DCF.
       - name: Unpin ${{ steps.pkg.outputs.name }} in the downstream's Remotes
-        shell: Rscript {0}
-        env:
-          PKG: ${{ steps.pkg.outputs.name }}
-        run: |
-          pkg <- Sys.getenv("PKG")
-          f <- "_downstream/DESCRIPTION"
-          ln <- readLines(f)
-          start <- grep("^Remotes:", ln)
-          if (!length(start)) {
-            cat("No Remotes: field -- nothing to unpin.\n")
-          } else {
-            ## Field block: from "Remotes:" to just before the next field.
-            isField <- grepl("^[A-Za-z][A-Za-z0-9@._-]*:", ln)
-            after <- which(isField & seq_along(ln) > start[1])
-            end <- if (length(after)) after[1] - 1L else length(ln)
-            body <- sub("^Remotes:", "", paste(ln[start[1]:end], collapse = " "))
-            refs <- trimws(unlist(strsplit(body, ",")))
-            refs <- refs[nzchar(refs)]
-            ## Compare package names exactly rather than pattern-matching the
-            ## ref: no escaping to get wrong, and "SpaDES.tools" cannot match
-            ## "SpaDES.toolsExtra". Drops "@ref", then "owner/".
-            refPkg <- sub("^.*/", "", sub("@.*$", "", refs))
-            keep <- refs[refPkg != pkg]
-            cat("Remotes before:", paste(refs, collapse = ", "), "\n")
-            cat("Remotes after :",
-                if (length(keep)) paste(keep, collapse = ", ") else "<field removed>", "\n")
-            repl <- if (length(keep))
-              c("Remotes:", paste0("    ", keep,
-                                   c(rep(",", length(keep) - 1L), ""))) else character()
-            writeLines(c(ln[seq_len(start[1] - 1L)], repl,
-                         if (end < length(ln)) ln[(end + 1L):length(ln)]), f)
-            ## Re-parse: a malformed rewrite must fail here, not at install.
-            stopifnot(nrow(read.dcf(f)) == 1L)
-          }
+        uses: PredictiveEcology/actions/unpin-remotes@main
+        with:
+          description: _downstream/DESCRIPTION
+          package: ${{ steps.pkg.outputs.name }}
 
       # Resolve the DOWNSTREAM's dependencies (working-directory), and supply
       # the package under test from the checkout rather than any repository.
@@ -249,6 +201,9 @@ jobs:
         continue-on-error: true
         uses: r-lib/actions/setup-r-dependencies@v2
         with:
+          # See #48/#57: the ABI keeps a library built against a different GDAL
+          # out of this job via the bare restore-key. "1" is upstream's default.
+          cache-version: ${{ steps.spatial.outputs.abi && format('1-{0}', steps.spatial.outputs.abi) || '1' }}
           working-directory: _downstream
           pak-version: stable
           dependencies: ${{ inputs.dependencies }}
