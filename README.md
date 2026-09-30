@@ -151,20 +151,18 @@ skipped the jobs after the run had already started.
 `actions/checkout`, `r-lib/actions/*`, `codecov/codecov-action`, and so on -- and
 opens a pull request when one of them needs attention.
 
-That is the other side of the advice above, not a contradiction of it. Callers
-follow `@main` because this repository is tested as a whole and fixes should reach
-them. Inside it, the pins on other people's actions are ordinary dependencies, and
-something has to notice when they move. The `PredictiveEcology/actions/...@main`
-self-references in these files are on Dependabot's ignore list, so `@main` is left
-alone.
-
 Those pins all float on a major tag, so patches and minor releases already arrive
 without a pull request. Dependabot speaks up only when a major moves, which is when
 someone has to read a changelog anyway.
 
-Each composite action directory is listed separately in that file, because
-Dependabot does not look inside subdirectories on its own. The seven that exist are
-all listed; a new one needs its own entry adding.
+This does not change the advice above. Callers follow `@main`, and Dependabot leaves
+those references alone of its own accord: a branch name is not a version, so its
+parser never treats `PredictiveEcology/actions/...@main` as a dependency.
+
+Every composite action directory is named in that file, because Dependabot does not
+look inside subdirectories on its own. Adding a composite action therefore means
+adding a line there, and the `dependabot-directories` job in `self-test.yaml` fails
+the build if that list and the directories on disk ever diverge.
 
 # More information on GitHub Actions
 
