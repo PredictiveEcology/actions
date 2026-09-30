@@ -1,0 +1,112 @@
+## Bump the development version once per merge.
+##
+## Callers trigger this on `push` to `development`, so a version moves once per
+## merge instead of once per pull request (which made every open PR conflict on
+## DESCRIPTION / <Module>.R). It works on either kind of repository:
+##   * a package: DESCRIPTION `Version:` last component +1, `Date:` set to today;
+##   * a SpaDES module (no DESCRIPTION, <Module>.R with defineModule()): the
+##     `version = list(<Module> = "...")` / `numeric_version("...")` entry.
+## NEWS is left alone (bullets live under a "(development version)" heading), and
+## so is a module's rendered .md/.html.
+##
+## Only development versions are bumped (four or more components, e.g.
+## 3.2.1.9000). A release version such as 3.2.1 is skipped with a message; the
+## next release number is a decision, not a side effect of merging.
+##
+## The bump is committed as "chore: bump version to X [skip ci]". That message
+## stops GitHub from starting runs for the commit, and this workflow also
+## refuses to run when the pushed commit is such a bump, so it cannot loop even
+## if a token that does trigger workflows is used.
+##
+## Branch protection: the push goes straight to the branch. If a rule requires
+## pull requests or status checks, the push is rejected and the job fails with a
+## message saying so. Fix that by letting the pushing identity bypass the rule
+## (the github-actions app for the default token, or the owner of the `token`
+## secret). This workflow does not try to get around a rule.
+##
+## Caller (see examples/bump-version.caller.yaml):
+##
+##   on:
+##     push:
+##       branches: [development]
+##   jobs:
+##     bump-version:
+##       uses: PredictiveEcology/actions/.github/workflows/bump-version.yaml@main
+
+name: bump-version
+
+on:
+  workflow_call:
+    inputs:
+      module:
+        description: >-
+          Module name, i.e. the basename of <module>.R. Only used when the
+          repository has no DESCRIPTION. Defaults to the repository name.
+        required: false
+        type: string
+        default: ""
+      commit-prefix:
+        description: "Start of the bump commit message. The version and `[skip ci]` follow."
+        required: false
+        type: string
+        default: "chore: bump version"
+    secrets:
+      token:
+        description: >-
+          Token used to push. Default: the workflow's GITHUB_TOKEN, whose pushes
+          do not start other workflows. Pass a token that may bypass branch
+          protection if the branch is protected.
+        required: false
+
+## Distinct from any caller-side group: a called workflow sharing its caller's
+## group name would deadlock. Not cancelling: a queued bump waits for the running
+## one, then checks out the branch tip, so two merges never race on the push.
+concurrency:
+  group: bump-version-${{ github.repository }}-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  bump:
+    ## Skip the bump's own commit, whatever token pushed it.
+    if: >-
+      github.event_name == 'push' &&
+      !startsWith(github.event.head_commit.message, inputs.commit-prefix)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.ref_name }}
+          token: ${{ secrets.token || github.token }}
+
+      - id: bump
+        uses: PredictiveEcology/actions/bump-version@main
+        with:
+          module: ${{ inputs.module }}
+
+      - name: Commit and push
+        if: steps.bump.outputs.bumped == 'true'
+        shell: bash
+        env:
+          NEW: ${{ steps.bump.outputs.new-version }}
+          PREFIX: ${{ inputs.commit-prefix }}
+          BRANCH: ${{ github.ref_name }}
+        run: |
+          set -uo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -u
+          git commit -q -m "${PREFIX} to ${NEW} [skip ci]"
+          if git push origin "HEAD:${BRANCH}" 2> push.err; then cat push.err; exit 0; fi
+          cat push.err
+          if grep -qiE 'protected branch|GH006|GH013|rule violations|not allowed to push' push.err; then
+            echo "::error::Branch ${BRANCH} is protected and rejected the version bump. Let the pushing identity bypass the rule (the github-actions app for the default token), or pass a token with bypass rights as the \`token\` secret of this workflow."
+          else
+            ## Someone pushed while this ran. Bumps are serialised, so the run for that
+            ## push comes next; this merge's own bump needs a re-run.
+            echo "::error::Push of the version bump was rejected (the branch moved?). Re-run this workflow."
+          fi
+          exit 1

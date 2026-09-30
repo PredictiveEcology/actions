@@ -64,6 +64,9 @@ permissions: {}
 ## push to the repository.
 jobs:
   render:
+    ## Skipped on a draft pull request (push and workflow_dispatch are unaffected).
+    ## A draft's CI is deferred until it is marked ready and the branch is pushed.
+    if: ${{ !(github.event_name == 'pull_request' && github.event.pull_request.draft) }}
     name: Render module Rmd
     runs-on: ubuntu-latest
     permissions:
