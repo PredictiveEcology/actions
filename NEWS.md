@@ -1,5 +1,21 @@
 # PredictiveEcology/actions (development)
 
+- **Dependabot now watches this repository's pins on third-party actions.**
+  `.github/dependabot.yml` checks `.github/workflows/` and all eight composite action
+  directories weekly. Every pin floats on a major tag -- `actions/checkout@v7`,
+  `r-lib/actions/setup-r@v2` -- so patches and minor releases already arrive through
+  the moving tag, and the only pull requests raised are major bumps such as checkout
+  v7 to v8. The directories are named one by one because `directory: "/"` covers only
+  `.github/workflows/` and an `action.yml` in the repository root -- subdirectories
+  are invisible to Dependabot unless listed (dependabot/dependabot-core#6949) -- and
+  they sit in a single `directories:` block under `group-by: dependency-name`, so a
+  dependency used in more than one directory arrives as one pull request instead of
+  one per directory. Because that list is hand-maintained and goes stale silently, a
+  new `dependabot-directories` job in `self-test.yaml` fails the build when it and the
+  composite action directories on disk diverge. Callers are unaffected: a `uses:`
+  pinned to a branch is not a version, so `PredictiveEcology/actions/...@main` is never
+  parsed as a dependency in the first place.
+
 - **The `[skip-ci]` guard is removed from every workflow.** GitHub already skips a
   run for `[skip ci]`, `[ci skip]`, `[no ci]`, `[skip actions]` and `[actions skip]`,
   and it does so before any run starts. The hyphenated `[skip-ci]` is a local

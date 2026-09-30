@@ -33,6 +33,14 @@ on:
       - "install-Require/**"
       - "install-Rmd-pkgs/**"
       - "install-SpaDES/**"
+      ## Any composite action's manifest, including one nobody has added yet.
+      ## The dependabot-directories job below exists to catch a new action that
+      ## is missing from .github/dependabot.yml, and an enumerated list of
+      ## directories could never fire for a directory that is new in the very
+      ## pull request being checked.
+      - "*/action.yaml"
+      - "*/action.yml"
+      - ".github/dependabot.yml"
       - "tests/fixture/**"
       - ".github/workflows/self-test.yaml"
       - ".github/workflows/ecosystem-test.yaml"
@@ -460,5 +468,86 @@ jobs:
           if [ "$checked" -eq 0 ]; then
             echo "::error::found no setup-r-dependencies callers to check -- has the scan gone stale?"
             rc=1
+          fi
+          exit "$rc"
+
+  ## Dependabot cannot find the composite actions by itself: with
+  ## `directory: "/"` it reads .github/workflows/ and a root-level action.yml
+  ## and nothing else, so .github/dependabot.yml names each composite action
+  ## directory explicitly (dependabot/dependabot-core#6949).
+  ##
+  ## Static, and for the same reason as the job above: the failure is SILENT.
+  ## A directory missing from that list means the action's pins are simply
+  ## never checked -- no run fails, nothing is annotated, and the gap is
+  ## invisible until someone reads the file. `unpin-remotes` arrived in #66 and
+  ## was already missing from the list days later; review caught it, CI could
+  ## not have. This is the check that closes that.
+  dependabot-directories:
+    name: dependabot.yml lists every composite action
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Assert the directories list matches the composite actions on disk
+        shell: bash
+        run: |
+          set -uo pipefail
+
+          ## Note for anyone editing this: `shell: bash` runs with -e, so a bare
+          ## `[ test ] && cmd` aborts the whole step the first time the test is
+          ## false. Guard with `|| continue` instead, as below.
+
+          ## A composite action is a top-level directory holding an action
+          ## manifest. An unmatched glob expands to itself, so each candidate is
+          ## tested rather than assumed to exist.
+          on_disk="$(for f in */action.yaml */action.yml; do
+            [ -e "$f" ] || continue
+            dirname "$f"
+          done | sort -u)"
+
+          ## The `directories:` entries, less their leading slash. The "/" root
+          ## entry is workflows rather than a composite action, so it reduces to
+          ## the empty string and is dropped. Read with awk rather than a YAML
+          ## parser because PyYAML is not guaranteed to be in the runner image's
+          ## Python -- see the note in readme-tables.yaml.
+          listed="$(awk '
+            /^[[:space:]]*directories:[[:space:]]*$/ { inlist = 1; next }
+            inlist && /^[[:space:]]*-[[:space:]]*\// {
+              sub(/^[[:space:]]*-[[:space:]]*\//, "")
+              if ($0 != "") print
+              next
+            }
+            inlist && /^[[:space:]]*[^-[:space:]]/ { inlist = 0 }
+          ' .github/dependabot.yml | sort -u)"
+
+          rc=0
+
+          ## Neither side being empty is a premise of the comparison below; a
+          ## silent pass because a pattern stopped matching would defeat the
+          ## point of the job.
+          if [ -z "$on_disk" ]; then
+            echo "::error::found no */action.yaml on disk -- has the scan gone stale?"
+            rc=1
+          fi
+          if [ -z "$listed" ]; then
+            echo "::error file=.github/dependabot.yml::parsed no directories: entries -- has the format changed?"
+            rc=1
+          fi
+          if [ "$rc" -ne 0 ]; then
+            exit "$rc"
+          fi
+
+          while read -r d; do
+            echo "::error file=.github/dependabot.yml::composite action '$d' is not in directories: -- its pins are never checked"
+            rc=1
+          done < <(comm -23 <(printf '%s\n' "$on_disk") <(printf '%s\n' "$listed"))
+
+          while read -r d; do
+            echo "::error file=.github/dependabot.yml::directories: names '$d', which holds no action manifest"
+            rc=1
+          done < <(comm -13 <(printf '%s\n' "$on_disk") <(printf '%s\n' "$listed"))
+
+          if [ "$rc" -eq 0 ]; then
+            echo "ok   $(printf '%s\n' "$on_disk" | wc -l) composite actions, all listed"
           fi
           exit "$rc"
