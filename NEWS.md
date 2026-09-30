@@ -1,5 +1,23 @@
 # PredictiveEcology/actions (development)
 
+- **CI no longer runs on draft pull requests.** Every reusable workflow that runs on a pull
+  request (`R-CMD-check`, `test-coverage`, `test-downstream`, `pkgdown`, `revdeps`,
+  `testthat-module`, `render-module-rmd`, `pkgdown-module`, `ecosystem-test`) skips its jobs
+  when `github.event.pull_request.draft` is true; `push` and `workflow_dispatch` are
+  unaffected. Callers use GitHub's default `pull_request` types, which lack `ready_for_review`,
+  so mark the PR ready and then push the branch update (merge `development`) to start CI.
+  A caller may add `types: [opened, synchronize, reopened, ready_for_review]` to make marking
+  ready alone start CI. See the README.
+
+- **New `bump-version.yaml` reusable workflow and `bump-version` action: versions move once per
+  merge to `development`, not once per PR.** Called on `push` to `development`, it adds 1 to the
+  last component of a package's `Version:` (and sets `Date:`) or a SpaDES module's
+  `version = list(<Module> = "...")` / `numeric_version("...")`, and commits
+  `chore: bump version to X [skip ci]`. Release versions (no fourth component) are skipped, as in
+  reproducible's pre-commit hook. It does not re-run on its own commit and is serialised per
+  branch. A protected `development` needs a bypass for the pushing identity or a `token` secret.
+  `self-test.yaml` runs the bump script against fixtures. Example: `examples/bump-version.caller.yaml`.
+
 - **The `[skip-ci]` guard is removed from every workflow.** GitHub already skips a
   run for `[skip ci]`, `[ci skip]`, `[no ci]`, `[skip actions]` and `[actions skip]`,
   and it does so before any run starts. The hyphenated `[skip-ci]` is a local

@@ -1,0 +1,5 @@
+Package: pkgdev
+Version: 3.2.1.9000
+Date: 2020-01-01
+Title: x
+Depends: R (>= 4.0)

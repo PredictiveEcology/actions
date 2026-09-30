@@ -1,0 +1,19 @@
+## Example caller for the bump-version reusable workflow: bumps the development
+## version once per merge to development. Works for packages and SpaDES modules.
+##
+## The job needs no other setup. If `development` is protected so that the
+## github-actions app cannot push, pass a token that may bypass the rule:
+##     secrets:
+##       token: ${{ secrets.BUMP_TOKEN }}
+
+name: bump-version
+
+on:
+  push:
+    branches: [development]
+
+jobs:
+  bump-version:
+    permissions:
+      contents: write
+    uses: PredictiveEcology/actions/.github/workflows/bump-version.yaml@main
