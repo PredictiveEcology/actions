@@ -35,6 +35,34 @@ revisit it.
 See [NEWS.md](https://github.com/PredictiveEcology/actions/blob/main/NEWS.md) for
 the changes at each tag.
 
+# Testing against an unmerged PR: `Depends-on:`
+
+When a pull request needs the unmerged code of another PR (in the same or another
+PredictiveEcology repo), say so in its description with one line per PR:
+
+```
+Depends-on: PredictiveEcology/LandR#264
+```
+
+The reusable workflows `R-CMD-check`, `test-coverage`, `pkgdown`, `testthat-module`,
+`render-module-rmd` and `pkgdown-module` then install that PR with pak after the normal
+dependency install, so it overrides the development version, and run as usual. It is
+opt-in: without such a line, or on a push, `workflow_dispatch` or schedule run, nothing
+changes.
+
+- The line is case-insensitive and may sit anywhere in the description; nothing else in
+  the description triggers anything.
+- The description is read through the API when the job runs, so edit it and re-run the job.
+- A referenced PR that is merged or closed is skipped (the log says so), so a stale line is
+  harmless after the upstream merges.
+- Not transitive: list every PR the change needs.
+- The log and the job summary show what ran, e.g.
+  `Depends-on: installed PredictiveEcology/LandR#264 -> LandR 1.2.0.9046 (sha a110a43)`.
+- Public repositories need no extra permission. A private repository needs
+  `pull-requests: read`; without it the step warns and does nothing.
+
+Details: [install-depends-on](install-depends-on/README.md).
+
 # Reusable workflows
 
 These are the primary interface. A caller supplies its triggers and any
@@ -126,6 +154,7 @@ The building blocks the workflows above are made of. Use them directly only when
 no reusable workflow fits. For details and example usage see each action's
 `README`.
 
+1. [install-depends-on](https://github.com/PredictiveEcology/actions/tree/main/install-depends-on) - install the open PRs named by `Depends-on:` lines in the PR description;
 1. [install-Require](https://github.com/PredictiveEcology/actions/tree/main/install-Require) - installs `Require` (and `remotes`);
 1. [install-Rmd-pkgs](https://github.com/PredictiveEcology/actions/tree/main/install-Rmd-pkgs) - installs packages commonly needed to render SpaDES module manuals;
 1. [install-SpaDES](https://github.com/PredictiveEcology/actions/tree/main/install-SpaDES) - installs `SpaDES` packages;

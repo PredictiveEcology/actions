@@ -204,6 +204,9 @@ jobs:
         run: ${{ inputs.post-install }}
         shell: Rscript {0}
 
+      ## After the dependency install on purpose, so a `Depends-on:` PR overrides it.
+      - uses: PredictiveEcology/actions/install-depends-on@main
+
       # Staged after the install steps and handed only to the "Test coverage"
       # step below, so the credential is never in the environment of a step that
       # installs third-party code. Shared with R-CMD-check.yaml rather than

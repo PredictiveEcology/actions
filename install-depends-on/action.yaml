@@ -1,0 +1,26 @@
+name: 'install-depends-on'
+description: >-
+  Install the open pull requests listed as `Depends-on: owner/repo#N` lines in
+  the description of the pull request under test, so it is tested against that
+  unmerged code. A no-op when there are no such lines or the event is not a
+  pull request. Run it AFTER the normal dependency install.
+author: 'Eliot McIntire'
+
+inputs:
+  token:
+    description: "Token for the GitHub API reads and for pak. The default token is enough for public repositories."
+    required: false
+    default: ${{ github.token }}
+
+runs:
+  using: "composite"
+  steps:
+    ## Everything goes through `env:` rather than being pasted into script source.
+    - name: Install Depends-on pull requests
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+        EVENT_NAME: ${{ github.event_name }}
+        REPO: ${{ github.repository }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+      run: Rscript "${{ github.action_path }}/depends-on.R"
