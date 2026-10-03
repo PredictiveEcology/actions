@@ -155,6 +155,9 @@ jobs:
           pkgs <- SpaDES.core::packages(modules = m, paths = "..")
           Require::Require(pkgs[[1]])
 
+      ## After the dependency install on purpose, so a `Depends-on:` PR overrides it.
+      - uses: PredictiveEcology/actions/install-depends-on@main
+
       - name: Render module Rmd
         shell: Rscript {0}
         env:
