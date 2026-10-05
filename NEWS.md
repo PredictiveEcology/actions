@@ -17,6 +17,15 @@
   reproducible's pre-commit hook. It does not re-run on its own commit and is serialised per
   branch. A protected `development` needs a bypass for the pushing identity or a `token` secret.
   `self-test.yaml` runs the bump script against fixtures. Example: `examples/bump-version.caller.yaml`.
+- **New opt-in `Depends-on:` support, via the new `install-depends-on` composite action.**
+  A pull request whose description has a line `Depends-on: owner/repo#N` is now tested
+  against the open PR `owner/repo#N`, installed with pak after the normal dependency
+  install, so chains of dependent PRs can go green in parallel. The description is read
+  through the API at run time (edit it and re-run), merged or closed PRs are skipped, and
+  what was installed goes to the log and the job summary. No line, or an event other than
+  `pull_request`, changes nothing. Called from `R-CMD-check`, `test-coverage`, `pkgdown`,
+  `testthat-module`, `render-module-rmd` and `pkgdown-module`; callers edit nothing.
+  Resolution is not transitive. See the README.
 
 - **The `[skip-ci]` guard is removed from every workflow.** GitHub already skips a
   run for `[skip ci]`, `[ci skip]`, `[no ci]`, `[skip actions]` and `[actions skip]`,

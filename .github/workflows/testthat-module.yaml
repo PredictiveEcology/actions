@@ -164,6 +164,9 @@ jobs:
           pkgs <- SpaDES.core::packages(modules = m, paths = "..")
           Require::Require(pkgs[[1]])
 
+      ## After the dependency install on purpose, so a `Depends-on:` PR overrides it.
+      - uses: PredictiveEcology/actions/install-depends-on@main
+
       ## A module with no tests must not fail: at the time this workflow was written
       ## almost every module carried only the dead `newModule()` scaffolding, so a
       ## hard failure would paint the whole family red for the absence of tests

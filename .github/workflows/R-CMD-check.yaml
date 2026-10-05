@@ -222,6 +222,9 @@ jobs:
             any::rcmdcheck
             ${{ inputs.extra-packages }}
 
+      ## After the dependency install on purpose, so a `Depends-on:` PR overrides it.
+      - uses: PredictiveEcology/actions/install-depends-on@main
+
       # Staged as late as possible: every step above installs and runs
       # third-party code, and none of it needs this credential. Only
       # check-r-package below receives it, via a step-level `env:`.
