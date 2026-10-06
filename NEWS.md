@@ -1,5 +1,21 @@
 # PredictiveEcology/actions (development)
 
+- **Dependabot now watches this repository's pins on third-party actions.**
+  `.github/dependabot.yml` checks `.github/workflows/` and all nine composite action
+  directories weekly. Every pin floats on a major tag -- `actions/checkout@v7`,
+  `r-lib/actions/setup-r@v2` -- so patches and minor releases already arrive through
+  the moving tag, and the only pull requests raised are major bumps such as checkout
+  v7 to v8. The directories are named one by one because `directory: "/"` covers only
+  `.github/workflows/` and an `action.yml` in the repository root -- subdirectories
+  are invisible to Dependabot unless listed (dependabot/dependabot-core#6949) -- and
+  they sit in a single `directories:` block under `group-by: dependency-name`, so a
+  dependency used in more than one directory arrives as one pull request instead of
+  one per directory. Because that list is hand-maintained and goes stale silently, a
+  new `dependabot-directories` job in `self-test.yaml` fails the build when it and the
+  composite action directories on disk diverge. Callers are unaffected: a `uses:`
+  pinned to a branch is not a version, so `PredictiveEcology/actions/...@main` is never
+  parsed as a dependency in the first place.
+
 - **New opt-in `Depends-on:` support, via the new `install-depends-on` composite action.**
   A pull request whose description has a line `Depends-on: owner/repo#N` is now tested
   against the open PR `owner/repo#N`, installed with pak after the normal dependency
