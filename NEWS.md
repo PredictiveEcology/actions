@@ -1,7 +1,7 @@
 # PredictiveEcology/actions (development)
 
 - **Dependabot now watches this repository's pins on third-party actions.**
-  `.github/dependabot.yml` checks `.github/workflows/` and all eight composite action
+  `.github/dependabot.yml` checks `.github/workflows/` and all nine composite action
   directories weekly. Every pin floats on a major tag -- `actions/checkout@v7`,
   `r-lib/actions/setup-r@v2` -- so patches and minor releases already arrive through
   the moving tag, and the only pull requests raised are major bumps such as checkout
@@ -15,6 +15,16 @@
   composite action directories on disk diverge. Callers are unaffected: a `uses:`
   pinned to a branch is not a version, so `PredictiveEcology/actions/...@main` is never
   parsed as a dependency in the first place.
+
+- **New opt-in `Depends-on:` support, via the new `install-depends-on` composite action.**
+  A pull request whose description has a line `Depends-on: owner/repo#N` is now tested
+  against the open PR `owner/repo#N`, installed with pak after the normal dependency
+  install, so chains of dependent PRs can go green in parallel. The description is read
+  through the API at run time (edit it and re-run), merged or closed PRs are skipped, and
+  what was installed goes to the log and the job summary. No line, or an event other than
+  `pull_request`, changes nothing. Called from `R-CMD-check`, `test-coverage`, `pkgdown`,
+  `testthat-module`, `render-module-rmd` and `pkgdown-module`; callers edit nothing.
+  Resolution is not transitive. See the README.
 
 - **The `[skip-ci]` guard is removed from every workflow.** GitHub already skips a
   run for `[skip ci]`, `[ci skip]`, `[no ci]`, `[skip actions]` and `[actions skip]`,
