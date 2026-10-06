@@ -31,3 +31,8 @@ eq(is_installable_pr("open", NA_character_), TRUE, "open, NA merged_at")
 eq(is_installable_pr("closed", ""), FALSE, "closed")
 eq(is_installable_pr("closed", "2026-01-01T00:00:00Z"), FALSE, "merged")
 eq(is_installable_pr("open", "2026-01-01T00:00:00Z"), FALSE, "merged_at wins")
+
+eq(is_same_repo("PredictiveEcology/fireSense_spreadFit", "predictiveecology/FireSense_SpreadFit"), TRUE,
+   "same repository, different case")
+eq(is_same_repo("PredictiveEcology/LandR", "PredictiveEcology/fireSense_spreadFit"), FALSE,
+   "other repository")

@@ -8,7 +8,8 @@
   what was installed goes to the log and the job summary. No line, or an event other than
   `pull_request`, changes nothing. Called from `R-CMD-check`, `test-coverage`, `pkgdown`,
   `testthat-module`, `render-module-rmd` and `pkgdown-module`; callers edit nothing.
-  Resolution is not transitive. See the README.
+  Resolution is not transitive. A `Depends-on:` naming the PR's own repository (a stacked
+  PR) is skipped, as its commits are already in the branch under test. See the README.
 
 - **The `[skip-ci]` guard is removed from every workflow.** GitHub already skips a
   run for `[skip ci]`, `[ci skip]`, `[no ci]`, `[skip actions]` and `[actions skip]`,

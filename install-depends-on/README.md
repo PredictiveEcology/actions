@@ -21,6 +21,10 @@ colon. Nothing else in the description triggers anything.
   upstream merges, the stale line has no effect.
 - Each open PR is installed with `pak::pkg_install("owner/repo#N", upgrade = TRUE)`
   after the normal dependency install, so it overrides the development version.
+- A reference to the repository the PR is in is skipped, with a log line. A PR
+  stacked on another PR of the same repository is branched from it and carries
+  `Depends-on: owner/samerepo#N`; the parent's commits are already in the branch
+  under test, so nothing is installed.
 - Resolution is not transitive: list every PR the change needs.
 - The log and the job summary show what was installed, e.g.
   `Depends-on: installed PredictiveEcology/LandR#264 -> LandR 1.2.0.9046 (sha a110a43)`.
