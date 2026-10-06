@@ -100,7 +100,7 @@ jobs:
           library(cffr)
           cff_write(keys = list())
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: citation-cff
           path: CITATION.cff
