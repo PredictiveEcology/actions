@@ -242,7 +242,7 @@ runs:
     # narrower set, which is what the previous inline version did.
     - name: Install R deps (retry fallback)
       if: steps.deps.outcome == 'failure'
-      uses: nick-fields/retry@v3
+      uses: nick-fields/retry@v4
       env:
         # Routed through env: rather than interpolated into the command, so a
         # quote or newline in an input cannot break (or extend) the shell line.
