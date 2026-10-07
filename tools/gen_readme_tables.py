@@ -25,6 +25,10 @@ README = ROOT / "README.md"
 ORDER = ["R-CMD-check", "test-coverage", "pkgdown", "test-downstream", "revdeps",
          "citation", "render-module-rmd", "testthat-module", "pkgdown-module"]
 
+# Reusable workflows that are not CI checks, so the columns (R versions,
+# dependency source) do not apply; documented in prose instead.
+NOT_TABULATED = {"bump-version"}
+
 # Inputs every workflow of a kind should offer. One that is missing from a
 # workflow in its own kind is flagged, so the table shows where a caller cannot
 # set something its siblings allow. Flags clear themselves as workflows gain the
@@ -61,6 +65,8 @@ def reusable():
     out = {}
     for path in sorted(WF_DIR.glob("*.y*ml")):
         doc, on = load(path)
+        if path.stem in NOT_TABULATED:
+            continue
         if isinstance(on, dict) and "workflow_call" in on:
             out[path.stem] = (doc, on["workflow_call"] or {}, path.read_text())
     return {k: out[k] for k in sorted(out, key=lambda k: (ORDER.index(k) if k in ORDER else 99, k))}

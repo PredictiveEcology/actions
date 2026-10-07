@@ -80,6 +80,7 @@ file's header comment for its inputs.
 | `render-module-rmd.yaml` | render a SpaDES module's `.Rmd` and commit the result |
 | `testthat-module.yaml` | run a SpaDES module's `testthat` suite |
 | `pkgdown-module.yaml` | build a SpaDES module's pkgdown site and deploy it to `gh-pages` |
+| `bump-version.yaml` | bump the development version once per merge to `development` (see below) |
 
 ```yaml
 jobs:
@@ -148,6 +149,28 @@ Both tables are generated from the workflow files by
 [`tools/gen_readme_tables.py`](tools/gen_readme_tables.py), and CI fails if they
 drift from the workflows they describe.
 
+# Version bumps
+
+Versions are bumped once per merge to `development`, not in pull requests, so open PRs do
+not conflict on `DESCRIPTION` / `<Module>.R`. A repository calls `bump-version.yaml` on
+`push` to `development` (`examples/bump-version.caller.yaml`). It adds 1 to the last
+dotted component and, for a package, sets `Date:` to today; for a SpaDES module (no
+`DESCRIPTION`, a `<Module>.R` with `defineModule()`) it rewrites the
+`version = list(<Module> = "...")` or `numeric_version("...")` entry. `NEWS.md` and a
+module's rendered `.md`/`.html` are left alone: keep NEWS bullets under a
+"(development version)" heading.
+
+Only development versions (four or more components, e.g. `3.2.1.9000`) are bumped; a
+release version such as `3.2.1` is skipped with a message, as in reproducible's local
+pre-commit hook. The commit is `chore: bump version to X [skip ci]`. The workflow does not
+run when the pushed commit is such a bump, and runs are serialised per branch.
+
+The push goes straight to the branch. If a rule on `development` requires pull requests
+or status checks, the push is rejected and the job fails saying so; let the pushing
+identity bypass the rule, or pass a token with bypass rights as the workflow's `token`
+secret. The bump logic is `bump-version/bump-version.sh`; `tests/bump-version/run-tests.sh`
+runs it against fixtures.
+
 # Composite actions
 
 The building blocks the workflows above are made of. Use them directly only when
@@ -162,6 +185,7 @@ no reusable workflow fits. For details and example usage see each action's
 1. [setup-r-deps](https://github.com/PredictiveEcology/actions/tree/main/setup-r-deps) - R, pandoc, system deps and the package dependency cache in one step;
 1. [stage-gdrive-auth](https://github.com/PredictiveEcology/actions/tree/main/stage-gdrive-auth) - stage a Google Drive credential for tests that need one;
 1. [unpin-remotes](https://github.com/PredictiveEcology/actions/tree/main/unpin-remotes) - drop one package from a DESCRIPTION's `Remotes`, leaving other fields untouched;
+1. [bump-version](https://github.com/PredictiveEcology/actions/tree/main/bump-version) - bump a package's or module's development version in place (used by `bump-version.yaml`);
 1. [revdeps-check](https://github.com/PredictiveEcology/actions/tree/main/revdeps-check) - run reverse dependency checks for R packages;
 
 # Skipping a run

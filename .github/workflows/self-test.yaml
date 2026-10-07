@@ -29,6 +29,8 @@ on:
       - "setup-r-deps/**"
       - "stage-gdrive-auth/**"
       - "unpin-remotes/**"
+      - "bump-version/**"
+      - "tests/bump-version/**"
       - "install-spatial-deps/**"
       - "install-Require/**"
       - "install-depends-on/**"
@@ -55,6 +57,7 @@ on:
       - ".github/workflows/revdeps.yaml"
       - ".github/workflows/test-coverage.yaml"
       - ".github/workflows/test-downstream.yaml"
+      - ".github/workflows/bump-version.yaml"
   workflow_dispatch:
 
 concurrency:
@@ -451,6 +454,37 @@ jobs:
   ## damage only surfaces later as a dlopen error in whichever consumer restored
   ## the poisoned library. There is nothing to observe at runtime in the passing
   ## case, so an assertion on the workflow text is the honest test.
+  ## The bump script against fixtures (dev and release DESCRIPTION, module list and
+  ## numeric_version forms), then the composite action itself on a fixture copy.
+  bump-version:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Run the fixture tests
+        shell: bash
+        run: tests/bump-version/run-tests.sh
+
+      - name: Copy a fixture for the action
+        shell: bash
+        run: cp -r tests/bump-version/pkg-dev "$RUNNER_TEMP/pkg"
+
+      - id: bump
+        uses: ./bump-version
+        with:
+          working-directory: ${{ runner.temp }}/pkg
+
+      - name: Check the action's outputs and file
+        shell: bash
+        env:
+          BUMPED: ${{ steps.bump.outputs.bumped }}
+          NEW: ${{ steps.bump.outputs.new-version }}
+        run: |
+          test "$BUMPED" = true
+          test "$NEW" = 3.2.1.9001
+          grep -qx "Version: 3.2.1.9001" "$RUNNER_TEMP/pkg/DESCRIPTION"
+
   abi-cache-key-coverage:
     name: every dependency install keys on the ABI
     runs-on: ubuntu-latest

@@ -1,0 +1,38 @@
+name: 'bump-version'
+description: >-
+  Bump the development version of the package (DESCRIPTION) or SpaDES module
+  (<Module>.R) in the checked-out repository, in place. Does not commit.
+author: 'Eliot McIntire'
+
+inputs:
+  module:
+    description: "Module name, used only when there is no DESCRIPTION. Default: the repository name."
+    required: false
+    default: ""
+  working-directory:
+    description: "Directory holding DESCRIPTION or <Module>.R."
+    required: false
+    default: "."
+
+outputs:
+  bumped:
+    description: "`true` if a file was changed, `false` if the version was left alone."
+    value: ${{ steps.bump.outputs.bumped }}
+  old-version:
+    description: "Version before the bump (empty when not bumped)."
+    value: ${{ steps.bump.outputs.old-version }}
+  new-version:
+    description: "Version after the bump (empty when not bumped)."
+    value: ${{ steps.bump.outputs.new-version }}
+
+runs:
+  using: "composite"
+  steps:
+    - id: bump
+      shell: bash
+      env:
+        WORKDIR: ${{ inputs.working-directory }}
+        MODULE: ${{ inputs.module }}
+        REPO: ${{ github.repository }}
+      run: |
+        "${{ github.action_path }}/bump-version.sh" "$WORKDIR" "${MODULE:-${REPO#*/}}"
