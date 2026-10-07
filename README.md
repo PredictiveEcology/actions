@@ -149,28 +149,6 @@ Both tables are generated from the workflow files by
 [`tools/gen_readme_tables.py`](tools/gen_readme_tables.py), and CI fails if they
 drift from the workflows they describe.
 
-# Draft pull requests
-
-Every reusable workflow that runs on a pull request (`R-CMD-check`, `test-coverage`,
-`test-downstream`, `pkgdown`, `revdeps`, `testthat-module`, `render-module-rmd`,
-`pkgdown-module`, `ecosystem-test`) skips all its jobs when the pull request is a
-draft. `push` and `workflow_dispatch` runs are unaffected. Dependent PRs are opened as
-drafts until the PR they depend on merges, so they cost no CI meanwhile.
-
-Callers trigger on `pull_request` with GitHub's default activity types (`opened`,
-`synchronize`, `reopened`), which do **not** include `ready_for_review`. Marking a PR
-ready therefore starts nothing by itself. The process: mark the PR ready, then push the
-branch update (the merge of `development`); that fires `synchronize` and CI runs.
-
-A caller that wants marking ready to be enough adds the type to its own trigger (not done
-in any repository yet):
-
-```yaml
-on:
-  pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
-```
-
 # Version bumps
 
 Versions are bumped once per merge to `development`, not in pull requests, so open PRs do

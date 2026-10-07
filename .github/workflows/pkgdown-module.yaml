@@ -75,9 +75,6 @@ permissions: {}
 ## must not share a job with a token that can push to the repository.
 jobs:
   build:
-    ## Skipped on a draft pull request (push and workflow_dispatch are unaffected).
-    ## A draft's CI is deferred until it is marked ready and the branch is pushed.
-    if: ${{ !(github.event_name == 'pull_request' && github.event.pull_request.draft) }}
     name: Build pkgdown site
     runs-on: ubuntu-latest
     permissions:
