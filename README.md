@@ -220,6 +220,25 @@ The hyphenated `[skip-ci]` is **not** one of them and is no longer honoured here
 These workflows used to carry a job-level guard for that spelling, which only
 skipped the jobs after the run had already started.
 
+# Keeping the pins current
+
+`.github/dependabot.yml` watches the third-party actions this repository uses --
+`actions/checkout`, `r-lib/actions/*`, `codecov/codecov-action`, and so on -- and
+opens a pull request when one of them needs attention.
+
+Those pins all float on a major tag, so patches and minor releases already arrive
+without a pull request. Dependabot speaks up only when a major moves, which is when
+someone has to read a changelog anyway.
+
+This does not change the advice above. Callers follow `@main`, and Dependabot leaves
+those references alone of its own accord: a branch name is not a version, so its
+parser never treats `PredictiveEcology/actions/...@main` as a dependency.
+
+Every composite action directory is named in that file, because Dependabot does not
+look inside subdirectories on its own. Adding a composite action therefore means
+adding a line there, and the `dependabot-directories` job in `self-test.yaml` fails
+the build if that list and the directories on disk ever diverge.
+
 # More information on GitHub Actions
 
 <https://github.com/r-lib/actions>

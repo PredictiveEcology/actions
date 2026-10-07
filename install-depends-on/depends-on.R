@@ -25,6 +25,13 @@ is_installable_pr <- function(state, merged_at) {
   identical(state, "open") && (is.na(merged_at) || !nzchar(merged_at))
 }
 
+## A reference to the repository under test is a stacked PR: its commits are
+## already in the branch being tested, so installing it would fail (no DESCRIPTION
+## in a module repo) or overwrite the code under test (a package repo).
+is_same_repo <- function(dep_repo, repo) {
+  identical(tolower(dep_repo), tolower(repo))
+}
+
 ## `jq` must not contain double quotes: shQuote() is cmd-style on Windows runners.
 gh_api <- function(path, jq) {
   out <- suppressWarnings(system2("gh", shQuote(c("api", path, "--jq", jq)), stdout = TRUE, stderr = TRUE))
@@ -65,6 +72,12 @@ main <- function() {
   summary_lines <- "### Depends-on"
   for (i in seq_len(nrow(deps))) {
     ref <- deps$ref[i]
+    if (is_same_repo(deps$repo[i], repo)) {
+      msg <- sprintf("Depends-on: skipped %s (same repository: a stacked PR already contains it)", ref)
+      message(msg)
+      summary_lines <- c(summary_lines, paste0("- ", msg))
+      next
+    }
     info <- strsplit(gh_api(sprintf("repos/%s/pulls/%s", deps$repo[i], deps$number[i]),
                             "[.state, .merged_at] | @tsv"), "\t")[[1]]
     state <- info[1]
