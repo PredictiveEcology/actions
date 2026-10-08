@@ -216,7 +216,7 @@ jobs:
 
       ## One artifact per module, and back into the module's own folder: a repository
       ## with several modules calls this workflow once per module in the same run.
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v7
         with:
           name: module-html-${{ inputs.module }}
           path: ${{ inputs.module-dir || '.' }}
