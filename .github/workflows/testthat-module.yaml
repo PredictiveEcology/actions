@@ -210,6 +210,13 @@ jobs:
           md <- Sys.getenv("MODULE_DIR"); mp <- if (nzchar(md)) dirname(md) else ".."
           pkg <- SpaDES.core::convertToPackage(m, path = mp, buildDocuments = TRUE,
                                                destinationPath = tempfile("testthat-module"))
+          ## With `module-dir`, link the other modules of that folder beside the converted
+          ## one, as they sit in the repository, so a test can run this module with its
+          ## neighbours (scfmSpread's tests run scfmEscape too).
+          if (nzchar(md)) {
+            for (s in setdiff(list.dirs(mp, recursive = FALSE), md))
+              file.symlink(normalizePath(s), file.path(dirname(pkg), basename(s)))
+          }
           res <- testthat::test_local(pkg, reporter = "summary", stop_on_failure = FALSE)
           df <- as.data.frame(res)
           bad <- sum(df$failed) + sum(df$error)

@@ -8,7 +8,8 @@
   workflow once per module (`examples/multi-module.caller.yaml`), so the concurrency
   group is now per workflow and module, the rendered-file artifact per module, and the render commit
   rebases before pushing, up to three times, since the other modules' commits may
-  have landed first.
+  have landed first. With `module-dir`, the other modules in the same folder are linked
+  beside the converted module, so a test can run it with its neighbours.
 
 - **Dependabot now watches this repository's pins on third-party actions.**
   `.github/dependabot.yml` checks `.github/workflows/` and all nine composite action
