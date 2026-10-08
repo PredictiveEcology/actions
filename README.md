@@ -122,6 +122,7 @@ it; the legend is under the second table.
 | `timeout` | – | – | – | – | ✅ `30` | – | – | – | – |
 | `downstream` | – | – | – | ✅ **required** | – | – | – | – | – |
 | `run-in-tmux` | – | ✅ `false` | – | – | – | – | – | – | – |
+| `module-dir` | – | – | – | – | – | – | ✅ `""` | ✅ `""` | – |
 
 <!-- END GENERATED: inputs -->
 

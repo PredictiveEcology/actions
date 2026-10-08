@@ -31,9 +31,19 @@ on:
     inputs:
       module:
         description: >-
-          Module name, i.e. the basename of <module>.R. Must match the repository name.
+          Module name, i.e. the basename of <module>.R. Must match the repository
+          name, unless `module-dir` is given.
         required: true
         type: string
+      module-dir:
+        description: >-
+          Folder holding the module, relative to the repository root, for a
+          repository with several modules (e.g. `modules/scfmSpread`); its last
+          part must be the module name. Empty (the default): the repository root,
+          which must then be named after the module.
+        required: false
+        type: string
+        default: ""
       r-version:
         description: "R version passed to setup-r."
         required: false
@@ -68,8 +78,11 @@ on:
 ## resolves to the CALLER's name, so without the `-reusable` suffix this key can
 ## collide with a caller that declares its own concurrency, and GitHub cancels the
 ## run before any job starts.
+## Named after this workflow and the module: `github.workflow` is the caller, and a
+## caller running both workflows for several modules (examples/multi-module.caller.yaml)
+## would otherwise put each module's test and render in one group and cancel one.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}-reusable
+  group: ${{ github.workflow }}-testthat-module-${{ github.ref }}-${{ inputs.module }}-reusable
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions: {}
@@ -87,6 +100,7 @@ jobs:
     env:
       GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
       MODULE: ${{ inputs.module }}
+      MODULE_DIR: ${{ inputs.module-dir }}
 
     steps:
       - uses: actions/checkout@v7
@@ -149,16 +163,17 @@ jobs:
           Require::Require(c("covr", "pkgload", "roxygen2", "testthat", "withr"),
                            require = FALSE)
 
-      ## `paths = ".."` is not a typo: actions/checkout puts the repository at
-      ## /home/runner/work/<repo>/<repo>, so the working directory is itself named
-      ## after the module and its parent is the module *directory* SpaDES.core
-      ## expects. Index `packages()` once -- indexing twice reduces the whole
+      ## `mp` is ".." by default, and that is not a typo: actions/checkout puts the
+      ## repository at /home/runner/work/<repo>/<repo>, so the working directory is
+      ## itself named after the module and its parent is the module *directory*
+      ## SpaDES.core expects. With `module-dir` it is that folder's parent. Index `packages()` once -- indexing twice reduces the whole
       ## dependency vector to the string "SpaDES.core".
       - name: Install module package dependencies
         shell: Rscript {0}
         run: |
           m <- Sys.getenv("MODULE")
-          pkgs <- SpaDES.core::packages(modules = m, paths = "..")
+          md <- Sys.getenv("MODULE_DIR"); mp <- if (nzchar(md)) dirname(md) else ".."
+          pkgs <- SpaDES.core::packages(modules = m, paths = mp)
           Require::Require(pkgs[[1]])
 
       ## After the dependency install on purpose, so a `Depends-on:` PR overrides it.
@@ -173,13 +188,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if compgen -G "tests/testthat/test*.R" > /dev/null; then
+          if compgen -G "${MODULE_DIR:-.}/tests/testthat/test*.R" > /dev/null; then
             echo "found=true" >> "$GITHUB_OUTPUT"
           else
             echo "found=false" >> "$GITHUB_OUTPUT"
             echo "::notice::No test files under tests/testthat/; nothing to run."
             echo "### No tests" >> "$GITHUB_STEP_SUMMARY"
-            echo "\`${MODULE}\` has no files matching \`tests/testthat/test*.R\`." >> "$GITHUB_STEP_SUMMARY"
+            echo "\`${MODULE}\` has no files matching \`${MODULE_DIR:-.}/tests/testthat/test*.R\`." >> "$GITHUB_STEP_SUMMARY"
           fi
 
       ## Build the package rendition in a throwaway directory and test that. A module
@@ -192,8 +207,16 @@ jobs:
         shell: Rscript {0}
         run: |
           m <- Sys.getenv("MODULE")
-          pkg <- SpaDES.core::convertToPackage(m, path = "..", buildDocuments = TRUE,
+          md <- Sys.getenv("MODULE_DIR"); mp <- if (nzchar(md)) dirname(md) else ".."
+          pkg <- SpaDES.core::convertToPackage(m, path = mp, buildDocuments = TRUE,
                                                destinationPath = tempfile("testthat-module"))
+          ## With `module-dir`, link the other modules of that folder beside the converted
+          ## one, as they sit in the repository, so a test can run this module with its
+          ## neighbours (scfmSpread's tests run scfmEscape too).
+          if (nzchar(md)) {
+            for (s in setdiff(list.dirs(mp, recursive = FALSE), md))
+              file.symlink(normalizePath(s), file.path(dirname(pkg), basename(s)))
+          }
           res <- testthat::test_local(pkg, reporter = "summary", stop_on_failure = FALSE)
           df <- as.data.frame(res)
           bad <- sum(df$failed) + sum(df$error)
@@ -211,7 +234,8 @@ jobs:
         shell: Rscript {0}
         run: |
           m <- Sys.getenv("MODULE")
-          cov <- try(SpaDES.core::moduleCoverage(m, modulePath = ".."), silent = TRUE)
+          md <- Sys.getenv("MODULE_DIR"); mp <- if (nzchar(md)) dirname(md) else ".."
+          cov <- try(SpaDES.core::moduleCoverage(m, modulePath = mp), silent = TRUE)
           out <- Sys.getenv("GITHUB_STEP_SUMMARY")
           if (inherits(cov, "try-error")) {
             cat("### Coverage\n\nCould not be measured:\n\n```\n",
