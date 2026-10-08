@@ -187,7 +187,7 @@ jobs:
       ## include-hidden-files: upload-artifact skips dotfiles by default, which
       ## would drop the .nojekyll that stops GitHub Pages running Jekyll over the
       ## site.
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: pkgdown-site
           path: ${{ runner.temp }}/pkgdown-module/${{ inputs.module }}/docs
