@@ -78,8 +78,11 @@ on:
 ## resolves to the CALLER's name, so without the `-reusable` suffix this key can
 ## collide with a caller that declares its own concurrency, and GitHub cancels the
 ## run before any job starts.
+## Named after this workflow and the module: `github.workflow` is the caller, and a
+## caller running both workflows for several modules (examples/multi-module.caller.yaml)
+## would otherwise put each module's test and render in one group and cancel one.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}-${{ inputs.module }}-reusable
+  group: ${{ github.workflow }}-testthat-module-${{ github.ref }}-${{ inputs.module }}-reusable
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions: {}

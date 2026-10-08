@@ -57,8 +57,11 @@ on:
 ## expression in a caller that declares its own concurrency -- the called
 ## workflow then waits on a group its own parent holds and GitHub cancels the
 ## run before any job starts. See #33.
+## Named after this workflow and the module: `github.workflow` is the caller, and a
+## caller running both workflows for several modules (examples/multi-module.caller.yaml)
+## would otherwise put each module's test and render in one group and cancel one.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}-${{ inputs.module }}-reusable
+  group: ${{ github.workflow }}-render-module-rmd-${{ github.ref }}-${{ inputs.module }}-reusable
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 ## Default deny; each job re-grants only what it needs. The calling job must

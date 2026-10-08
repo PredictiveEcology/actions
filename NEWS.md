@@ -6,7 +6,7 @@
   repository root, named after the repository, so such a repository could not use
   them. Empty, the default, keeps that behaviour. A repository can now call each
   workflow once per module (`examples/multi-module.caller.yaml`), so the concurrency
-  group and the rendered-file artifact are now per module, and the render commit
+  group is now per workflow and module, the rendered-file artifact per module, and the render commit
   rebases before pushing, up to three times, since the other modules' commits may
   have landed first.
 
