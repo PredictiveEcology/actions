@@ -1,0 +1,39 @@
+## Example caller for a repository holding several modules in subfolders
+## (e.g. PredictiveEcology/scfm: modules/<module>/<module>.R). Each module is tested
+## and its Rmd rendered by its own job; `module-dir` tells the shared workflows where
+## the module is. List the modules in `matrix.module`.
+
+name: modules
+
+on:
+  pull_request:
+    branches: [main, master, development]
+  push:
+    branches: [main, master, development]
+    paths:
+      - .github/workflows/modules.yaml
+      - modules/**
+  workflow_dispatch:
+
+jobs:
+  testthat-module:
+    strategy:
+      fail-fast: false
+      matrix:
+        module: [<module1>, <module2>]
+    uses: PredictiveEcology/actions/.github/workflows/testthat-module.yaml@main
+    with:
+      module: ${{ matrix.module }}
+      module-dir: modules/${{ matrix.module }}
+
+  render-module-rmd:
+    strategy:
+      fail-fast: false
+      matrix:
+        module: [<module1>, <module2>]
+    permissions:
+      contents: write
+    uses: PredictiveEcology/actions/.github/workflows/render-module-rmd.yaml@main
+    with:
+      module: ${{ matrix.module }}
+      module-dir: modules/${{ matrix.module }}

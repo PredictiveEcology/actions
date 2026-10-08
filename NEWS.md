@@ -1,5 +1,15 @@
 # PredictiveEcology/actions (development)
 
+- **`testthat-module` and `render-module-rmd` take a `module-dir` input**, for a
+  repository that holds several modules in subfolders (PredictiveEcology/scfm keeps
+  its modules in `modules/<module>/`). Both workflows assumed the module was the
+  repository root, named after the repository, so such a repository could not use
+  them. Empty, the default, keeps that behaviour. A repository can now call each
+  workflow once per module (`examples/multi-module.caller.yaml`), so the concurrency
+  group and the rendered-file artifact are now per module, and the render commit
+  rebases before pushing, up to three times, since the other modules' commits may
+  have landed first.
+
 - **Dependabot now watches this repository's pins on third-party actions.**
   `.github/dependabot.yml` checks `.github/workflows/` and all nine composite action
   directories weekly. Every pin floats on a major tag -- `actions/checkout@v7`,

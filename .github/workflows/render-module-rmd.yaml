@@ -18,9 +18,18 @@ on:
       module:
         description: >-
           Module name, i.e. the basename of <module>.R / <module>.Rmd. Must match
-          the repository name.
+          the repository name, unless `module-dir` is given.
         required: true
         type: string
+      module-dir:
+        description: >-
+          Folder holding the module, relative to the repository root, for a
+          repository with several modules (e.g. `modules/scfmSpread`); its last
+          part must be the module name. Empty (the default): the repository root,
+          which must then be named after the module.
+        required: false
+        type: string
+        default: ""
       r-version:
         description: "R version passed to setup-r."
         required: false
@@ -49,7 +58,7 @@ on:
 ## workflow then waits on a group its own parent holds and GitHub cancels the
 ## run before any job starts. See #33.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}-reusable
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ inputs.module }}-reusable
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 ## Default deny; each job re-grants only what it needs. The calling job must
@@ -135,15 +144,17 @@ jobs:
 
       - uses: PredictiveEcology/actions/install-Rmd-pkgs@main
 
-      ## `paths = ".."` is not a typo. actions/checkout puts the repository at
-      ## /home/runner/work/<repo>/<repo>, so the working directory is itself
-      ## named after the module and its parent is the module *directory*
+      ## `mp` is ".." by default, and that is not a typo. actions/checkout puts the
+      ## repository at /home/runner/work/<repo>/<repo>, so the working directory is
+      ## itself named after the module and its parent is the module *directory*
       ## SpaDES.core expects. This is why the module name has to match the
-      ## repository name.
+      ## repository name, unless `module-dir` names the module's folder; then
+      ## `mp` is that folder's parent.
       - name: Install module package dependencies
         shell: Rscript {0}
         env:
           MODULE: ${{ inputs.module }}
+          MODULE_DIR: ${{ inputs.module-dir }}
         run: |
           ## packages() returns one element per module, and that element is the
           ## character vector of that module's reqdPkgs. Indexing it twice --
@@ -152,7 +163,8 @@ jobs:
           ## reqdPkg it touched ("there is no package called 'fireSenseUtils'").
           ## Index once, as the generated file this workflow replaces did.
           m <- Sys.getenv("MODULE")
-          pkgs <- SpaDES.core::packages(modules = m, paths = "..")
+          md <- Sys.getenv("MODULE_DIR"); mp <- if (nzchar(md)) dirname(md) else ".."
+          pkgs <- SpaDES.core::packages(modules = m, paths = mp)
           Require::Require(pkgs[[1]])
 
       ## After the dependency install on purpose, so a `Depends-on:` PR overrides it.
@@ -162,9 +174,12 @@ jobs:
         shell: Rscript {0}
         env:
           MODULE: ${{ inputs.module }}
+          MODULE_DIR: ${{ inputs.module-dir }}
         run: |
           m <- Sys.getenv("MODULE")
-          rmarkdown::render(paste0(m, ".Rmd"), encoding = "UTF-8")
+          md <- Sys.getenv("MODULE_DIR"); mp <- if (nzchar(md)) dirname(md) else ".."
+          rmarkdown::render(file.path(if (nzchar(md)) md else ".", paste0(m, ".Rmd")),
+                            encoding = "UTF-8")
 
       ## The .md as well as the .html. A module .Rmd that sets `keep_md: yes` -- most
       ## of them -- leaves `<module>.md` beside the .html, and that .md is what the
@@ -174,10 +189,10 @@ jobs:
       ## fires only when NOTHING matches, so a module without `keep_md` is unaffected.
       - uses: actions/upload-artifact@v4
         with:
-          name: module-html
+          name: module-html-${{ inputs.module }}
           path: |
-            ${{ inputs.module }}.html
-            ${{ inputs.module }}.md
+            ${{ inputs.module-dir || '.' }}/${{ inputs.module }}.html
+            ${{ inputs.module-dir || '.' }}/${{ inputs.module }}.md
           if-no-files-found: error
           retention-days: 1
 
@@ -196,27 +211,40 @@ jobs:
         with:
           persist-credentials: false
 
+      ## One artifact per module, and back into the module's own folder: a repository
+      ## with several modules calls this workflow once per module in the same run.
       - uses: actions/download-artifact@v4
         with:
-          name: module-html
+          name: module-html-${{ inputs.module }}
+          path: ${{ inputs.module-dir || '.' }}
 
       - name: Commit results
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           MODULE: ${{ inputs.module }}
+          MODULE_DIR: ${{ inputs.module-dir }}
         run: |
           set -euo pipefail
           git config --local user.name "github-actions[bot]"
           git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add "${MODULE}.html"
+          d="${MODULE_DIR:-.}"
+          git add "${d}/${MODULE}.html"
           ## Only when the module renders one; `git add` on a missing path fails, and
           ## under `set -e` that would take the whole job down for those modules.
-          if [ -f "${MODULE}.md" ]; then
-            git add "${MODULE}.md"
+          if [ -f "${d}/${MODULE}.md" ]; then
+            git add "${d}/${MODULE}.md"
           fi
           ## `git commit` exits non-zero when nothing is staged, which is the
           ## normal no-change case -- exit cleanly rather than pushing.
           git commit -m "Re-build ${MODULE}.Rmd" || exit 0
-          git push "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" \
-            "HEAD:${GITHUB_REF_NAME}"
+          ## Rebase first: in a repository with several modules, the commit jobs of
+          ## the other modules in this run may have pushed since this one checked out.
+          remote="https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          for i in 1 2 3; do
+            git pull --rebase "$remote" "${GITHUB_REF_NAME}" && \
+              git push "$remote" "HEAD:${GITHUB_REF_NAME}" && exit 0
+            git rebase --abort 2>/dev/null || true
+            sleep $((i * 5))
+          done
+          exit 1
