@@ -157,7 +157,6 @@ no reusable workflow fits. For details and example usage see each action's
 `README`.
 
 1. [install-depends-on](https://github.com/PredictiveEcology/actions/tree/main/install-depends-on) - install the open PRs named by `Depends-on:` lines in the PR description;
-1. [install-apt-packages](https://github.com/PredictiveEcology/actions/tree/main/install-apt-packages) - apt packages on Ubuntu, capped, retried, with the downloaded `.deb` files cached;
 1. [install-Require](https://github.com/PredictiveEcology/actions/tree/main/install-Require) - installs `Require` (and `remotes`);
 1. [install-Rmd-pkgs](https://github.com/PredictiveEcology/actions/tree/main/install-Rmd-pkgs) - installs packages commonly needed to render SpaDES module manuals;
 1. [install-SpaDES](https://github.com/PredictiveEcology/actions/tree/main/install-SpaDES) - installs `SpaDES` packages;
