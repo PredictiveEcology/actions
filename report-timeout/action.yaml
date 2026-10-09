@@ -1,0 +1,43 @@
+name: 'report-timeout'
+description: >-
+  After a step failed, say so plainly if it failed by hitting its
+  `timeout-minutes`. A step that times out is just "failed", and a job that
+  hits its own limit is "cancelled" with no step able to run afterwards, so
+  neither says why. Call this with `if: failure() && steps.<id>.outcome == 'failure'`.
+author: 'PredictiveEcology'
+
+inputs:
+  name:
+    description: "Human name of the step, used in the message."
+    required: true
+  started:
+    description: "Epoch seconds recorded just before the step."
+    required: true
+  ended:
+    description: "Epoch seconds recorded just after the step (even when it failed)."
+    required: true
+  limit:
+    description: "The step's timeout-minutes."
+    required: true
+
+runs:
+  using: "composite"
+  steps:
+    - shell: bash
+      env:
+        NAME: ${{ inputs.name }}
+        STARTED: ${{ inputs.started }}
+        ENDED: ${{ inputs.ended }}
+        LIMIT: ${{ inputs.limit }}
+      run: |
+        ## A step that hits timeout-minutes is killed at about LIMIT minutes; an
+        ## ordinary failure is not. Elapsed time against the limit tells them
+        ## apart, so ordinary failures get no message. Missing timestamps mean
+        ## the step never ran its marker: say nothing.
+        [ -n "$STARTED" ] && [ -n "$ENDED" ] || exit 0
+        secs=$((ENDED - STARTED))
+        if [ "$secs" -ge $((LIMIT * 60 - 5)) ]; then
+          msg="$NAME ran $((secs / 60)) min (limit $LIMIT min); usually a slow package mirror on this runner. Re-run the job."
+          echo "::error title=Timed out::$msg"
+          echo "**Timed out:** $msg" >> "$GITHUB_STEP_SUMMARY"
+        fi

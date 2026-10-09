@@ -6,6 +6,10 @@
   nothing. Nothing uses it yet; `install-spatial-deps` and `setup-r-deps` follow in a
   separate PR.
 
+- **New `report-timeout` action.** A step that hits its `timeout-minutes` is only shown as failed;
+  this emits a `Timed out` error annotation and job-summary line when the step ran for its
+  limit, and nothing for an ordinary failure. Used by `R-CMD-check` (separate PR).
+
 - **The module jobs stop after 60 minutes:** `testthat-module`, and the render and build jobs
   of `render-module-rmd` and `pkgdown-module`. A hung dependency install otherwise ran to
   GitHub's 6 h default while holding the module's concurrency group, so later runs of that
