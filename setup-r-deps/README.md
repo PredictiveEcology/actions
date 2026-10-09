@@ -37,6 +37,21 @@ Use `@main` — see [Which ref to use](../README.md#which-ref-to-use) in the rep
 | `post-install` | `""` | Rscript run after the install |
 | `working-directory` | `.` | where DESCRIPTION lives |
 
+## System packages
+
+On Linux the system packages are installed in two cached apt rounds
+(`install-apt-packages`), so a repeat run downloads nothing:
+
+1. before R: the geospatial libraries plus what `r-lib/actions/setup-r` apt-installs
+   (`gdebi-core qpdf devscripts ghostscript`);
+2. after R: the system requirements of the dependencies, computed with
+   `pak::pkg_sysreqs()` without installing. When this succeeds,
+   `setup-r-dependencies` runs with `PKG_SYSREQS=false` and installs none itself.
+   If it fails, pak installs them as before.
+
+`setup-r` still runs its own `apt-get update`; with the lists already in place that
+is a small incremental download.
+
 ## On timeouts
 
 Composite-action steps do **not** support `timeout-minutes`

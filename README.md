@@ -122,7 +122,10 @@ it; the legend is under the second table.
 | `timeout` | – | – | – | – | ✅ `30` | – | – | – | – |
 | `downstream` | – | – | – | ✅ **required** | – | – | – | – | – |
 | `run-in-tmux` | – | ✅ `false` | – | – | – | – | – | – | – |
+| `check-timeout-minutes` | ✅ `20` | – | – | – | – | – | – | – | – |
+| `deps-timeout-minutes` | ✅ `15` | – | – | – | – | – | – | – | – |
 | `module-dir` | – | – | – | – | – | – | ✅ `""` | ✅ `""` | – |
+| `timeout-minutes` | ✅ `40` | – | – | – | – | – | – | – | – |
 
 <!-- END GENERATED: inputs -->
 

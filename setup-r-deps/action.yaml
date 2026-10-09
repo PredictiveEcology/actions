@@ -116,10 +116,34 @@ runs:
     # action a relative `uses:` resolves against GITHUB_WORKSPACE -- the calling
     # repository's checkout -- so the relative form works only when the caller
     # happens to be this repo, and breaks every real consumer.
+    #
+    # System packages come in two apt rounds, both capped, retried and cached
+    # by install-apt-packages (apt downloads from azure.archive.ubuntu.com
+    # sometimes crawl at 40-100 kB/s, which once cost a job 40 minutes):
+    #   1. here, before R: the spatial libraries plus what r-lib/actions/setup-r
+    #      apt-installs on Linux (installed first, its own apt-get install is
+    #      then a no-op);
+    #   2. after R is available: the system requirements of the dependencies,
+    #      computed up front with pak so setup-r-dependencies need not install
+    #      them uncapped.
+    - name: Name the apt packages setup-r installs
+      id: setup-r-apt
+      if: runner.os == 'Linux'
+      shell: bash
+      run: echo "packages=gdebi-core qpdf devscripts ghostscript" >> "$GITHUB_OUTPUT"
+
     - name: Install geospatial system dependencies
       id: spatial
       if: inputs.system-deps == 'true'
       uses: PredictiveEcology/actions/install-spatial-deps@main
+      with:
+        extra-apt-packages: ${{ steps.setup-r-apt.outputs.packages }}
+
+    - name: Install setup-r system packages
+      if: runner.os == 'Linux' && inputs.system-deps != 'true'
+      uses: PredictiveEcology/actions/install-apt-packages@main
+      with:
+        packages: ${{ steps.setup-r-apt.outputs.packages }}
 
     - uses: r-lib/actions/setup-r@v2
       with:
@@ -219,6 +243,48 @@ runs:
         echo "abi=$abi" >> "$GITHUB_OUTPUT"
         echo "cache-version: $value"
 
+    # Round 2 of the system packages (see above). Neither step may fail the job:
+    # if either does, setup-r-dependencies installs the system requirements
+    # itself, as it did before.
+    - name: Compute the system requirements of the dependencies
+      id: sysreqs
+      if: runner.os == 'Linux'
+      continue-on-error: true
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        SRD_DEPENDENCIES: ${{ inputs.dependencies }}
+        SRD_EXTRA_PACKAGES: ${{ inputs.extra-packages }}
+        SRD_PAK_VERSION: ${{ inputs.pak-version }}
+      run: |
+        Rscript - <<'EOF'
+        ## pak goes in a throwaway library so the one setup-r-dependencies
+        ## installs and caches is untouched.
+        lib <- tempfile("pak-lib"); dir.create(lib)
+        ver <- Sys.getenv("SRD_PAK_VERSION")
+        repos <- if (ver %in% c("stable", "rc", "devel"))
+          sprintf("https://r-lib.github.io/p/pak/%s/%s/%s/%s", ver,
+                  .Platform$pkgType, R.Version()$os, R.Version()$arch) else getOption("repos")
+        install.packages("pak", lib = lib, repos = repos)
+        .libPaths(c(lib, .libPaths()))
+        deps <- eval(parse(text = Sys.getenv("SRD_DEPENDENCIES")))
+        extra <- Filter(nzchar, trimws(strsplit(Sys.getenv("SRD_EXTRA_PACKAGES"), "\n")[[1]]))
+        sr <- pak::pkg_sysreqs(c("deps::.", extra), upgrade = FALSE, dependencies = deps)
+        ## pandoc is provided by setup-pandoc, not apt.
+        pkgs <- setdiff(sort(unique(unlist(sr$packages$system_packages))), "pandoc")
+        message("system requirements: ", paste(pkgs, collapse = " "))
+        cat("packages=", paste(pkgs, collapse = " "), "\n", sep = "",
+            file = Sys.getenv("GITHUB_OUTPUT"), append = TRUE)
+        EOF
+
+    - name: Install the system requirements of the dependencies
+      id: sysreqs-install
+      if: steps.sysreqs.outputs.packages != ''
+      continue-on-error: true
+      uses: PredictiveEcology/actions/install-apt-packages@main
+      with:
+        packages: ${{ steps.sysreqs.outputs.packages }}
+
     # Install everything, Suggests included. Skipping Suggests looks like a free
     # saving on a no-suggests leg, but that leg's guarantee comes from
     # _R_CHECK_DEPENDS_ONLY_=true, which makes R build its own restricted
@@ -235,6 +301,9 @@ runs:
         dependencies: ${{ inputs.dependencies }}
         working-directory: ${{ inputs.working-directory }}
         extra-packages: ${{ inputs.extra-packages }}
+      env:
+        ## Off only when the step above installed them; otherwise pak's default.
+        PKG_SYSREQS: ${{ steps.sysreqs-install.outcome == 'success' && 'false' || 'true' }}
 
     # Fallback when setup-r-dependencies fails (most often a transient
     # binary-fetch failure under pak). This mirrors the primary step's

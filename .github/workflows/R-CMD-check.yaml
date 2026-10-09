@@ -98,6 +98,27 @@ on:
           or Rmd-based documentation.
         type: boolean
         default: true
+      deps-timeout-minutes:
+        description: >-
+          Limit for the dependency setup step (R, system packages, R packages).
+          A step that hits it fails with a "Timed out" message. A normal run
+          needs 2-5 minutes; slow means a slow package mirror on that runner.
+        type: number
+        default: 15
+      check-timeout-minutes:
+        description: >-
+          Limit for the R CMD check step. Raise it for a package whose checks
+          legitimately run longer.
+        type: number
+        default: 20
+      timeout-minutes:
+        description: >-
+          Backstop for the whole job. Keep it above the two step limits added
+          together plus a few minutes (expressions cannot add, so this is not
+          computed), so a step limit fires first and can say "Timed out"; a job
+          that hits this limit is only shown as cancelled.
+        type: number
+        default: 40
     secrets:
       GOOGLEDRIVE_AUTH:
         description: >-
@@ -140,6 +161,8 @@ concurrency:
 jobs:
   R-CMD-check:
     runs-on: ${{ matrix.config.os }}
+
+    timeout-minutes: ${{ inputs.timeout-minutes }}
 
     # The nosuggests discriminator is load-bearing, not cosmetic. Without it
     # this matrix produces two jobs both called `ubuntu-latest (release)`:
@@ -206,7 +229,12 @@ jobs:
       # Everything from pandoc through the dependency install now lives in the
       # setup-r-deps composite action, so a job that is not running R CMD check
       # can reuse it. See PredictiveEcology/actions#24.
-      - uses: PredictiveEcology/actions/setup-r-deps@main
+      - id: t-deps0
+        shell: bash
+        run: echo "t=$(date +%s)" >> "$GITHUB_OUTPUT"
+      - id: deps
+        timeout-minutes: ${{ inputs.deps-timeout-minutes }}
+        uses: PredictiveEcology/actions/setup-r-deps@main
         with:
           r-version: ${{ matrix.config.r }}
           system-deps: ${{ inputs.system-deps }}
@@ -218,6 +246,10 @@ jobs:
           extra-packages: |
             any::rcmdcheck
             ${{ inputs.extra-packages }}
+      - id: t-deps1
+        if: always()
+        shell: bash
+        run: echo "t=$(date +%s)" >> "$GITHUB_OUTPUT"
 
       ## After the dependency install on purpose, so a `Depends-on:` PR overrides it.
       - uses: PredictiveEcology/actions/install-depends-on@main
@@ -233,7 +265,12 @@ jobs:
           present: ${{ secrets.GOOGLEDRIVE_AUTH != '' }}
 
 
-      - uses: r-lib/actions/check-r-package@v2
+      - id: t-check0
+        shell: bash
+        run: echo "t=$(date +%s)" >> "$GITHUB_OUTPUT"
+      - id: check
+        timeout-minutes: ${{ inputs.check-timeout-minutes }}
+        uses: r-lib/actions/check-r-package@v2
         env:
           # Path to the staged user OAuth token, or empty -> the R side sees an
           # unset var and skips, exactly as it does locally. GOOGLEDRIVE_AUTH is
@@ -245,6 +282,10 @@ jobs:
           error-on: ${{ inputs.error-on }}
           args: ${{ inputs.check-args }}
           build_args: ${{ inputs.build-args }}
+      - id: t-check1
+        if: always()
+        shell: bash
+        run: echo "t=$(date +%s)" >> "$GITHUB_OUTPUT"
 
       # check-r-package ships a "Show testthat output" step, but it greps
       # `testthat.Rout*` -- i.e. it assumes the conventional tests/testthat.R
@@ -270,3 +311,21 @@ jobs:
                 cat "$f"
                 echo "::endgroup::"
               done
+
+      ## A step that hits its timeout-minutes is only "failed", and a job that
+      ## hits its own limit is "cancelled" with nothing able to run afterwards.
+      ## These say why, for the step limits only; ordinary failures get nothing.
+      - if: failure() && steps.deps.outcome == 'failure'
+        uses: PredictiveEcology/actions/report-timeout@main
+        with:
+          name: Dependency setup
+          started: ${{ steps.t-deps0.outputs.t }}
+          ended: ${{ steps.t-deps1.outputs.t }}
+          limit: ${{ inputs.deps-timeout-minutes }}
+      - if: failure() && steps.check.outcome == 'failure'
+        uses: PredictiveEcology/actions/report-timeout@main
+        with:
+          name: R CMD check
+          started: ${{ steps.t-check0.outputs.t }}
+          ended: ${{ steps.t-check1.outputs.t }}
+          limit: ${{ inputs.check-timeout-minutes }}
