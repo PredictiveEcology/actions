@@ -11,9 +11,12 @@
   plus `setup-r`'s packages before R, then the system requirements computed with
   `pak::pkg_sysreqs()` after R, with `PKG_SYSREQS=false` for `setup-r-dependencies`
   once they are in. If computing or installing them fails, pak installs them as before.
-  `R-CMD-check` has a new `timeout-minutes` input (default 25) on each matrix job.
-  Callers change nothing; a package whose cold dependency build exceeds 25 minutes
-  can raise the input.
+  `R-CMD-check` limits the dependency setup step (`deps-timeout-minutes`, default 15) and
+  the check step (`check-timeout-minutes`, default 20); a step that hits its limit ends
+  with a `Timed out` error annotation and summary line (via `report-timeout`), saying it
+  was usually a slow mirror and to re-run. The job itself has a backstop `timeout-minutes`
+  (default 0 = the two limits plus 5, so the step limits fire first). Callers change
+  nothing; a package whose checks run longer can raise the inputs.
 
 - **`testthat-module` and `render-module-rmd` take a `module-dir` input**, for a
   repository that holds several modules in subfolders (PredictiveEcology/scfm keeps
