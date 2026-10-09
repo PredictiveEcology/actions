@@ -30,6 +30,7 @@ on:
       - "stage-gdrive-auth/**"
       - "unpin-remotes/**"
       - "install-spatial-deps/**"
+      - "install-apt-packages/**"
       - "install-Require/**"
       - "install-depends-on/**"
       - "tests/depends-on-test.R"
@@ -354,6 +355,39 @@ jobs:
           ## libproj-dev does not pull in, and it is absent on the macOS runner
           ## too. The .pc file ships with the -dev package on both.
           pkg-config --modversion proj
+
+  ## install-apt-packages: the first job installs two small packages that the
+  ## runner image lacks (downloading and saving the cache); the second, which
+  ## runs after it, must restore that cache and download nothing.
+  install-apt-packages-cold:
+    name: install-apt-packages (cold)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./install-apt-packages
+        with:
+          packages: figlet sl
+      - shell: bash
+        run: figlet ok && test -x /usr/games/sl
+
+  install-apt-packages-warm:
+    name: install-apt-packages (cache hit)
+    needs: install-apt-packages-cold
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - id: apt
+        uses: ./install-apt-packages
+        with:
+          packages: sl figlet
+      - shell: bash
+        env:
+          HIT: ${{ steps.apt.outputs.cache-hit }}
+        run: |
+          figlet ok && test -x /usr/games/sl
+          [ "$HIT" = "true" ] || { echo "::error::expected an apt cache hit, got '$HIT'"; exit 1; }
 
   ## Pure logic, no network. The regression this guards: the end of `Remotes:`
   ## was found with a field-name pattern lacking "/", so a following
