@@ -266,6 +266,7 @@ runs:
           sprintf("https://r-lib.github.io/p/pak/%s/%s/%s/%s", ver,
                   .Platform$pkgType, R.Version()$os, R.Version()$arch) else getOption("repos")
         install.packages("pak", lib = lib, repos = repos)
+        .libPaths(c(lib, .libPaths()))
         deps <- eval(parse(text = Sys.getenv("SRD_DEPENDENCIES")))
         extra <- Filter(nzchar, trimws(strsplit(Sys.getenv("SRD_EXTRA_PACKAGES"), "\n")[[1]]))
         sr <- pak::pkg_sysreqs(c("deps::.", extra), upgrade = FALSE, dependencies = deps)
