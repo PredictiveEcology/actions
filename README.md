@@ -161,6 +161,7 @@ no reusable workflow fits. For details and example usage see each action's
 1. [install-Rmd-pkgs](https://github.com/PredictiveEcology/actions/tree/main/install-Rmd-pkgs) - installs packages commonly needed to render SpaDES module manuals;
 1. [install-SpaDES](https://github.com/PredictiveEcology/actions/tree/main/install-SpaDES) - installs `SpaDES` packages;
 1. [install-spatial-deps](https://github.com/PredictiveEcology/actions/tree/main/install-spatial-deps) - system dependencies for geospatial packages on Ubuntu Linux and macOS;
+1. [report-timeout](https://github.com/PredictiveEcology/actions/tree/main/report-timeout) - say "Timed out" when a step hit its `timeout-minutes`;
 1. [setup-r-deps](https://github.com/PredictiveEcology/actions/tree/main/setup-r-deps) - R, pandoc, system deps and the package dependency cache in one step;
 1. [stage-gdrive-auth](https://github.com/PredictiveEcology/actions/tree/main/stage-gdrive-auth) - stage a Google Drive credential for tests that need one;
 1. [unpin-remotes](https://github.com/PredictiveEcology/actions/tree/main/unpin-remotes) - drop one package from a DESCRIPTION's `Remotes`, leaving other fields untouched;

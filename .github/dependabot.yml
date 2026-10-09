@@ -43,6 +43,7 @@ updates:
       - /
       - /install-Require
       - /install-apt-packages
+      - /report-timeout
       - /install-Rmd-pkgs
       - /install-SpaDES
       - /install-depends-on

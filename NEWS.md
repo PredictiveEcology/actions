@@ -6,6 +6,10 @@
   nothing. Nothing uses it yet; `install-spatial-deps` and `setup-r-deps` follow in a
   separate PR.
 
+- **New `report-timeout` action.** A step that hits its `timeout-minutes` is only shown as failed;
+  this emits a `Timed out` error annotation and job-summary line when the step ran for its
+  limit, and nothing for an ordinary failure. Used by `R-CMD-check` (separate PR).
+
 - **`testthat-module` and `render-module-rmd` take a `module-dir` input**, for a
   repository that holds several modules in subfolders (PredictiveEcology/scfm keeps
   its modules in `modules/<module>/`). Both workflows assumed the module was the
