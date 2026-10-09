@@ -1,5 +1,11 @@
 # PredictiveEcology/actions (development)
 
+- **New `install-apt-packages` action.** Installs Ubuntu packages with apt, capped and
+  retried, and caches the downloaded `.deb` files and apt lists in `actions/cache`
+  (keyed on OS, `ImageVersion` and the package list), so a repeat run downloads
+  nothing. Nothing uses it yet; `install-spatial-deps` and `setup-r-deps` follow in a
+  separate PR.
+
 - **`testthat-module` and `render-module-rmd` take a `module-dir` input**, for a
   repository that holds several modules in subfolders (PredictiveEcology/scfm keeps
   its modules in `modules/<module>/`). Both workflows assumed the module was the
