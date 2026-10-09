@@ -113,11 +113,12 @@ on:
         default: 20
       timeout-minutes:
         description: >-
-          Backstop for the whole job. 0 (the default) means the two step limits
-          plus 5, so a step limit always fires first and can say "Timed out";
-          a job that hits this limit is only shown as cancelled.
+          Backstop for the whole job. Keep it above the two step limits added
+          together plus a few minutes (expressions cannot add, so this is not
+          computed), so a step limit fires first and can say "Timed out"; a job
+          that hits this limit is only shown as cancelled.
         type: number
-        default: 0
+        default: 40
     secrets:
       GOOGLEDRIVE_AUTH:
         description: >-
@@ -161,7 +162,7 @@ jobs:
   R-CMD-check:
     runs-on: ${{ matrix.config.os }}
 
-    timeout-minutes: ${{ inputs.timeout-minutes || (inputs.deps-timeout-minutes + inputs.check-timeout-minutes + 5) }}
+    timeout-minutes: ${{ inputs.timeout-minutes }}
 
     # The nosuggests discriminator is load-bearing, not cosmetic. Without it
     # this matrix produces two jobs both called `ubuntu-latest (release)`:

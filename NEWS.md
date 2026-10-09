@@ -15,7 +15,7 @@
   the check step (`check-timeout-minutes`, default 20); a step that hits its limit ends
   with a `Timed out` error annotation and summary line (via `report-timeout`), saying it
   was usually a slow mirror and to re-run. The job itself has a backstop `timeout-minutes`
-  (default 0 = the two limits plus 5, so the step limits fire first). Callers change
+  (default 40, above the two step limits together, so a step limit fires first). Callers change
   nothing; a package whose checks run longer can raise the inputs.
 
 - **`testthat-module` and `render-module-rmd` take a `module-dir` input**, for a

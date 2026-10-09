@@ -125,7 +125,7 @@ it; the legend is under the second table.
 | `check-timeout-minutes` | ✅ `20` | – | – | – | – | – | – | – | – |
 | `deps-timeout-minutes` | ✅ `15` | – | – | – | – | – | – | – | – |
 | `module-dir` | – | – | – | – | – | – | ✅ `""` | ✅ `""` | – |
-| `timeout-minutes` | ✅ `0` | – | – | – | – | – | – | – | – |
+| `timeout-minutes` | ✅ `40` | – | – | – | – | – | – | – | – |
 
 <!-- END GENERATED: inputs -->
 
