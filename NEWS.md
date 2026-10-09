@@ -1,5 +1,11 @@
 # PredictiveEcology/actions (development)
 
+- **New `install-apt-packages` action.** Installs Ubuntu packages with apt, capped and
+  retried, and caches the downloaded `.deb` files and apt lists in `actions/cache`
+  (keyed on OS, `ImageVersion` and the package list), so a repeat run downloads
+  nothing. Nothing uses it yet; `install-spatial-deps` and `setup-r-deps` follow in a
+  separate PR.
+
 - **The module jobs stop after 60 minutes:** `testthat-module`, and the render and build jobs
   of `render-module-rmd` and `pkgdown-module`. A hung dependency install otherwise ran to
   GitHub's 6 h default while holding the module's concurrency group, so later runs of that
