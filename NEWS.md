@@ -1,5 +1,20 @@
 # PredictiveEcology/actions (development)
 
+- **System packages on Linux are cached, and a stuck job stops after 25 minutes.**
+  On some runners the Ubuntu mirror serves 40-100 kB/s, and three uncapped or
+  barely capped apt rounds (spatial libraries, `setup-r`, pak's system
+  requirements) once took 40 minutes. The new `install-apt-packages` action keeps
+  the downloaded `.deb` files and apt lists in `actions/cache`, keyed on OS,
+  `ImageVersion` and the package list, with the existing capped retry.
+  `install-spatial-deps` uses it (new input `extra-apt-packages`), and
+  `setup-r-deps` now installs everything in two cached rounds: the spatial libraries
+  plus `setup-r`'s packages before R, then the system requirements computed with
+  `pak::pkg_sysreqs()` after R, with `PKG_SYSREQS=false` for `setup-r-dependencies`
+  once they are in. If computing or installing them fails, pak installs them as before.
+  `R-CMD-check` has a new `timeout-minutes` input (default 25) on each matrix job.
+  Callers change nothing; a package whose cold dependency build exceeds 25 minutes
+  can raise the input.
+
 - **`testthat-module` and `render-module-rmd` take a `module-dir` input**, for a
   repository that holds several modules in subfolders (PredictiveEcology/scfm keeps
   its modules in `modules/<module>/`). Both workflows assumed the module was the

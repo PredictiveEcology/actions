@@ -98,6 +98,14 @@ on:
           or Rmd-based documentation.
         type: boolean
         default: true
+      timeout-minutes:
+        description: >-
+          Cap on each matrix job, in minutes. A normal leg takes 6-9; the cap
+          exists so a stalled download (slow apt mirror) ends the job instead
+          of burning GitHub's 360-minute default. Raise it for a package whose
+          cold dependency build is slow.
+        type: number
+        default: 25
     secrets:
       GOOGLEDRIVE_AUTH:
         description: >-
@@ -140,6 +148,8 @@ concurrency:
 jobs:
   R-CMD-check:
     runs-on: ${{ matrix.config.os }}
+
+    timeout-minutes: ${{ inputs.timeout-minutes }}
 
     # The nosuggests discriminator is load-bearing, not cosmetic. Without it
     # this matrix produces two jobs both called `ubuntu-latest (release)`:
