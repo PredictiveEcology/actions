@@ -98,3 +98,11 @@ eq(reduced_config("green"), rc, "green but still open: reduced")
 eq(reduced_config(c("failed", "merged")), rc, "any open upstream: reduced")
 eq(reduced_config(c("merged", "closed", "same-repo")), "", "all merged/closed: full matrix")
 eq(reduced_config(character()), "", "no upstream: full matrix")
+
+## An upstream with no checks at all is not waited for.
+g <- gate_decision(c("A/b#1", "C/d#2"), c("no-checks", "green"))
+eq(g$ready, TRUE, "no checks: ready")
+eq(g$lines, "A/b#1 has no checks; not waiting", "no checks: summary line")
+eq(gate_decision(c("A/b#1", "C/d#2"), c("no-checks", "pending"))$lines,
+   c("waiting for C/d#2 (pending)", "A/b#1 has no checks; not waiting"), "no checks beside a pending one")
+eq(reduced_config("no-checks") != "", TRUE, "no checks but still open: reduced matrix")

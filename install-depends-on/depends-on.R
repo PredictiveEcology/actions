@@ -77,11 +77,14 @@ check_state <- function(name, status, conclusion) {
   "green"
 }
 
-## `states` is one of green, merged, closed, same-repo, pending, failed per ref.
+## `states` is one of green, merged, closed, same-repo, no-checks, pending, failed
+## per ref. An upstream with no checks at all is not waited for: nothing would ever
+## turn it green.
 gate_decision <- function(refs, states) {
   waiting <- states %in% c("pending", "failed")
   list(ready = !any(waiting),
-       lines = sprintf("waiting for %s (%s)", refs[waiting], states[waiting]))
+       lines = c(sprintf("waiting for %s (%s)", refs[waiting], states[waiting]),
+                 sprintf("%s has no checks; not waiting", refs[states == "no-checks"])))
 }
 
 ## A finished run of the PR's head whose every job but the gate was skipped was
@@ -95,7 +98,7 @@ is_gated_run <- function(job_names, conclusions) {
 ## each OS. The full default matrix stays in R-CMD-check.yaml; the gate returns
 ## "" (use it) once no upstream is open, and on push events.
 reduced_config <- function(states) {
-  if (!any(states %in% c("green", "pending", "failed"))) return("")
+  if (!any(states %in% c("green", "pending", "failed", "no-checks"))) return("")
   os <- c("ubuntu-latest", "windows-latest", "macOS-latest")
   paste0("[", paste(sprintf('{"os":"%s","nosuggests":false,"r":"release"}', os), collapse = ","), "]")
 }
@@ -250,6 +253,10 @@ upstream_states <- function(deps, repo) {
                           ".check_runs[] | [.name, .status, (.conclusion | tostring)] | @tsv",
                           paginate = TRUE), "\t")
     cr <- cr[lengths(cr) == 3]
+    if (length(cr) == 0 &&
+        identical(gh_api(sprintf("repos/%s/commits/%s/status", d$repo, d$sha), ".total_count"), "0")) {
+      return("no-checks")
+    }
     check_state(vapply(cr, `[`, "", 1), vapply(cr, `[`, "", 2), vapply(cr, `[`, "", 3))
   }, "")
 }
@@ -265,7 +272,8 @@ run_gate <- function(repo, number) {
       d <- gate_decision(deps$ref, states)
       if (Sys.getenv("INPUT_REDUCED_MATRIX") == "true") set_output("config", reduced_config(states))
       add_summary(c("### Depends-on gate",
-                    if (d$ready) "All upstream pull requests are green, merged or closed: running."
+                    if (d$ready) c("All upstream pull requests are green, merged or closed: running.",
+                                   paste0("- ", d$lines))
                     else paste0("- ", d$lines, "; the jobs are skipped until then.")))
       message(if (d$ready) "Depends-on gate: ready." else paste(d$lines, collapse = "; "))
       d$ready || Sys.getenv("INPUT_HOLD") != "true"
