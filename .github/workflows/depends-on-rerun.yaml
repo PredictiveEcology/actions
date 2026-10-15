@@ -1,0 +1,42 @@
+## Re-runs this repository's pull-request runs that the `depends-on-gate` job held
+## back, once every upstream `Depends-on:` PR is green, merged or closed. Uses only
+## the calling repository's own GITHUB_TOKEN, so no cross-repository secret is needed.
+## Opt in by adding one caller file, `.github/workflows/depends-on-rerun.yaml`:
+##
+##   name: depends-on-rerun
+##   on:
+##     schedule:
+##       - cron: "*/30 * * * *"
+##     workflow_dispatch:
+##   jobs:
+##     rerun:
+##       permissions:
+##         actions: write
+##         pull-requests: read
+##       uses: PredictiveEcology/actions/.github/workflows/depends-on-rerun.yaml@main
+##
+## Scheduled workflows run only from the default branch. Exits within seconds when
+## no open PR has a `Depends-on:` line.
+name: depends-on-rerun
+
+on:
+  workflow_call:
+
+permissions: {}
+
+## A second run would try to re-run what the first just started.
+concurrency:
+  group: ${{ github.workflow }}-depends-on-rerun-reusable
+  cancel-in-progress: false
+
+jobs:
+  rerun:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      actions: write
+      pull-requests: read
+    steps:
+      - uses: PredictiveEcology/actions/install-depends-on@main
+        with:
+          mode: rerun

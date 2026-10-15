@@ -1,5 +1,21 @@
 # PredictiveEcology/actions (development)
 
+- **Opt-in options for PRs that carry `Depends-on:` lines; nothing changes unless a
+  caller sets them.** The reusable workflows `R-CMD-check`, `test-coverage`, `pkgdown`,
+  `testthat-module`, `render-module-rmd` and `pkgdown-module` take
+  `depends-on-virtual-bump` (resolve against a copy of each open upstream PR with its
+  Version raised by one, so a floor written as the post-merge version is met; before this
+  the solve failed on `reproducible (>= 3.2.1.9072)` while development was 9071) and
+  `depends-on-gate` (skip the jobs while an upstream PR is pending or failed); `R-CMD-check`
+  also takes `depends-on-reduced-matrix` (release on each OS while an upstream is open).
+  A new reusable workflow `depends-on-rerun.yaml`, called from a scheduled caller file in
+  the repository, re-runs the runs the gate skipped once the upstream is green or merged,
+  using only the repository's own token. `install-depends-on` gained `mode:`
+  (`prepare`, `install`, `gate`, `rerun`); the default is the old behaviour. With defaults,
+  `R-CMD-check` uses the same eight legs, now passed as JSON, and each workflow shows one
+  extra skipped `depends-on-gate` job. A dependent PR should write its floor as the
+  upstream's post-merge version. `tests/default-matrix-test.py` checks the defaults.
+
 - **`testthat-module` and `render-module-rmd` take a `module-dir` input**, for a
   repository that holds several modules in subfolders (PredictiveEcology/scfm keeps
   its modules in `modules/<module>/`). Both workflows assumed the module was the

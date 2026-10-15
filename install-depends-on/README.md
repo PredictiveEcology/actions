@@ -37,6 +37,33 @@ nothing. To use it in your own workflow, add it after the dependency install:
 - uses: PredictiveEcology/actions/install-depends-on@main
 ```
 
+# Modes
+
+`mode:` picks the job; the default, `install`, is everything described above.
+
+- `prepare`: run before the dependency solve. Downloads the head of each open upstream
+  PR, adds one to the last component of its `DESCRIPTION` `Version` in that copy only
+  (the post-merge bump), and returns `extra-packages` (the input plus one `local::<dir>`
+  line per upstream) for `setup-r-dependencies`. The solver then meets a floor written as
+  the post-merge version and tests the unmerged code. `preinstall: true` also installs
+  the copies, for module workflows that resolve through Require. `install` mode afterwards
+  installs the same bumped copies, so the version never drops below the floor. The
+  upstream must be a package repository (a `DESCRIPTION` at its root).
+- `gate`: outputs `ready` (`false` while an upstream PR has pending or failed checks at its
+  head, with `waiting for owner/repo#N (pending|failed)` in the job summary) and, with
+  `reduced-matrix: true`, `config`, three release legs while an upstream is open. Without a
+  `Depends-on:` line, or on a push, it finishes without installing R. An API error warns
+  and reports ready. `hold: false` computes `config` only. A check run named
+  `...depends-on-gate` is not counted as evidence, so an upstream that is itself waiting is
+  pending, not green.
+- `rerun`: re-runs the repository's finished PR runs whose jobs, apart from the gate, were
+  all skipped, when every upstream is ready. Called by `depends-on-rerun.yaml`; needs
+  `actions: write`.
+
+The reusable workflows switch these on with `depends-on-virtual-bump`,
+`depends-on-gate` and `depends-on-reduced-matrix` (all default `false`); see the
+top-level README.
+
 # Permissions
 
 Public repositories need nothing beyond the default token. A private repository

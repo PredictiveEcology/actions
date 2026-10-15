@@ -23,6 +23,28 @@ name: R-CMD-check
 on:
   workflow_call:
     inputs:
+      depends-on-virtual-bump:
+        description: >-
+          Opt in. For each open `Depends-on: owner/repo#N` PR, resolve the dependencies
+          against a copy of that PR with its Version raised by one (the post-merge
+          bump), so a floor written as the post-merge version is met. Default false:
+          the PR is installed after the dependency solve, as before.
+        type: boolean
+        default: false
+      depends-on-gate:
+        description: >-
+          Opt in. Skip the jobs while an upstream `Depends-on:` PR has pending or failed
+          checks; they run once it is green or merged (see depends-on-rerun.yaml for the
+          automatic re-run). Default false.
+        type: boolean
+        default: false
+      depends-on-reduced-matrix:
+        description: >-
+          Opt in. While a `Depends-on:` upstream PR is still open, run only release on
+          ubuntu, windows and macOS; the default matrix and `extra-config` run once
+          every upstream is merged or closed, and on pushes. Default false.
+        type: boolean
+        default: false
       extra-packages:
         description: "Packages appended to setup-r-dependencies `extra-packages` (newline-separated)."
         type: string
@@ -138,7 +160,28 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  ## Opt-in (`depends-on-gate`): holds the other jobs back while an upstream
+  ## `Depends-on:` PR is pending or failed. Skipped by default. See
+  ## install-depends-on/README.md.
+  depends-on-gate:
+    if: ${{ inputs.depends-on-gate || inputs.depends-on-reduced-matrix }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      ready: ${{ steps.gate.outputs.ready }}
+      config: ${{ steps.gate.outputs.config }}
+    steps:
+      - id: gate
+        uses: PredictiveEcology/actions/install-depends-on@main
+        with:
+          mode: gate
+          hold: ${{ inputs.depends-on-gate }}
+          reduced-matrix: ${{ inputs.depends-on-reduced-matrix }}
+
   R-CMD-check:
+    needs: depends-on-gate
+    ## A skipped gate (the default) lets the job run exactly as before.
+    if: ${{ !cancelled() && needs.depends-on-gate.result != 'failure' && (needs.depends-on-gate.result == 'skipped' || needs.depends-on-gate.outputs.ready == 'true') }}
     runs-on: ${{ matrix.config.os }}
 
     # The nosuggests discriminator is load-bearing, not cosmetic. Without it
@@ -152,17 +195,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        config:
-          - {os: macOS-latest,   nosuggests: false, r: 'release'}
-          - {os: windows-latest, nosuggests: false, r: 'devel'}
-          - {os: windows-latest, nosuggests: false, r: 'release'}
-          - {os: windows-latest, nosuggests: false, r: 'oldrel-1'}
-          - {os: ubuntu-latest,   nosuggests: false, r: 'devel'}
-          - {os: ubuntu-latest,   nosuggests: false, r: 'release'}
-          - {os: ubuntu-latest,   nosuggests: true,  r: 'release'}
-          - {os: ubuntu-latest,   nosuggests: false, r: 'oldrel-1'}
+        ## The default legs are the JSON after `||`: used unless the opt-in
+        ## `depends-on-reduced-matrix` gate returned three release legs. Keep it in
+        ## step with tests/default-matrix-test.py.
+        config: ${{ fromJSON(needs.depends-on-gate.outputs.config || '[{"os":"macOS-latest","nosuggests":false,"r":"release"},{"os":"windows-latest","nosuggests":false,"r":"devel"},{"os":"windows-latest","nosuggests":false,"r":"release"},{"os":"windows-latest","nosuggests":false,"r":"oldrel-1"},{"os":"ubuntu-latest","nosuggests":false,"r":"devel"},{"os":"ubuntu-latest","nosuggests":false,"r":"release"},{"os":"ubuntu-latest","nosuggests":true,"r":"release"},{"os":"ubuntu-latest","nosuggests":false,"r":"oldrel-1"}]') }}
         # Optional caller-supplied extra legs (default none). See extra-config input.
-        include: ${{ fromJSON(inputs.extra-config) }}
+        # Dropped while the reduced matrix is in use.
+        include: ${{ fromJSON(needs.depends-on-gate.outputs.config && '[]' || inputs.extra-config) }}
 
     env:
       _R_CHECK_DEPENDS_ONLY_: ${{ matrix.config.nosuggests }}
@@ -215,6 +254,7 @@ jobs:
           cache-version: ${{ inputs.cache-version }}
           extra-repositories: ${{ inputs.extra-repositories }}
           post-install: ${{ inputs.post-install }}
+          depends-on-virtual-bump: ${{ inputs.depends-on-virtual-bump }}
           extra-packages: |
             any::rcmdcheck
             ${{ inputs.extra-packages }}
