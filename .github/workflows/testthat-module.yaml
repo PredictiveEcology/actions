@@ -29,6 +29,21 @@ name: testthat-module
 on:
   workflow_call:
     inputs:
+      depends-on-virtual-bump:
+        description: >-
+          Opt in. For each open `Depends-on: owner/repo#N` PR, resolve the dependencies
+          against a copy of that PR with its Version raised by one (the post-merge
+          bump), so a floor written as the post-merge version is met. Default false:
+          the PR is installed after the dependency solve, as before.
+        type: boolean
+        default: false
+      depends-on-gate:
+        description: >-
+          Opt in. Skip the jobs while an upstream `Depends-on:` PR has pending or failed
+          checks; they run once it is green or merged (see depends-on-rerun.yaml for the
+          automatic re-run). Default false.
+        type: boolean
+        default: false
       module:
         description: >-
           Module name, i.e. the basename of <module>.R. Must match the repository
@@ -88,7 +103,29 @@ concurrency:
 permissions: {}
 
 jobs:
+  ## Opt-in (`depends-on-gate`): holds the other jobs back while an upstream
+  ## `Depends-on:` PR is pending or failed. Skipped by default. See
+  ## install-depends-on/README.md.
+  depends-on-gate:
+    if: ${{ inputs.depends-on-gate }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    outputs:
+      ready: ${{ steps.gate.outputs.ready }}
+      config: ${{ steps.gate.outputs.config }}
+    steps:
+      - id: gate
+        uses: PredictiveEcology/actions/install-depends-on@main
+        with:
+          mode: gate
+          hold: ${{ inputs.depends-on-gate }}
+
   testthat-module:
+    needs: depends-on-gate
+    ## A skipped gate (the default) lets the job run exactly as before.
+    if: ${{ !cancelled() && needs.depends-on-gate.result != 'failure' && (needs.depends-on-gate.result == 'skipped' || needs.depends-on-gate.outputs.ready == 'true') }}
     name: Test module
     runs-on: ubuntu-latest
     permissions:
@@ -168,6 +205,14 @@ jobs:
       ## itself named after the module and its parent is the module *directory*
       ## SpaDES.core expects. With `module-dir` it is that folder's parent. Index `packages()` once -- indexing twice reduces the whole
       ## dependency vector to the string "SpaDES.core".
+      ## Opt-in (`depends-on-virtual-bump`): before the module's reqdPkgs resolve, so
+      ## a floor written as the post-merge version of a `Depends-on:` PR is met.
+      - if: ${{ inputs.depends-on-virtual-bump }}
+        uses: PredictiveEcology/actions/install-depends-on@main
+        with:
+          mode: prepare
+          preinstall: true
+
       - name: Install module package dependencies
         shell: Rscript {0}
         run: |

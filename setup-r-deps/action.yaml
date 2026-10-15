@@ -71,6 +71,13 @@ inputs:
     description: "Optional Rscript run after the dependency install (e.g. NLMR/fastshp)."
     required: false
     default: ""
+  depends-on-virtual-bump:
+    description: >-
+      Opt in. Resolve the dependencies against a copy of each open
+      `Depends-on: owner/repo#N` PR with its Version raised by one (the post-merge
+      bump), so a floor written as the post-merge version is met. Default false.
+    required: false
+    default: "false"
   working-directory:
     description: "Directory containing the package's DESCRIPTION."
     required: false
@@ -226,6 +233,13 @@ runs:
     # the test driver calls `library(testthat)` unconditionally and testthat is
     # a Suggests, so dropping them kills the leg before any check output exists.
     # See PredictiveEcology/actions#21.
+    - id: depends-on
+      if: inputs.depends-on-virtual-bump == 'true'
+      uses: PredictiveEcology/actions/install-depends-on@main
+      with:
+        mode: prepare
+        extra-packages: ${{ inputs.extra-packages }}
+
     - id: deps
       continue-on-error: true
       uses: r-lib/actions/setup-r-dependencies@v2
@@ -234,7 +248,7 @@ runs:
         cache-version: ${{ steps.cache-version.outputs.value }}
         dependencies: ${{ inputs.dependencies }}
         working-directory: ${{ inputs.working-directory }}
-        extra-packages: ${{ inputs.extra-packages }}
+        extra-packages: ${{ steps.depends-on.outputs.extra-packages || inputs.extra-packages }}
 
     # Fallback when setup-r-dependencies fails (most often a transient
     # binary-fetch failure under pak). This mirrors the primary step's
@@ -250,7 +264,7 @@ runs:
         # EXPRESSION by contract, so it is eval-parsed, not treated as a string.
         SRD_WORKDIR: ${{ inputs.working-directory }}
         SRD_DEPENDENCIES: ${{ inputs.dependencies }}
-        SRD_EXTRA_PACKAGES: ${{ inputs.extra-packages }}
+        SRD_EXTRA_PACKAGES: ${{ steps.depends-on.outputs.extra-packages || inputs.extra-packages }}
       with:
         timeout_minutes: 30
         max_attempts: 3

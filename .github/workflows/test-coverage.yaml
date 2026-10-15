@@ -23,6 +23,21 @@ name: test-coverage
 on:
   workflow_call:
     inputs:
+      depends-on-virtual-bump:
+        description: >-
+          Opt in. For each open `Depends-on: owner/repo#N` PR, resolve the dependencies
+          against a copy of that PR with its Version raised by one (the post-merge
+          bump), so a floor written as the post-merge version is met. Default false:
+          the PR is installed after the dependency solve, as before.
+        type: boolean
+        default: false
+      depends-on-gate:
+        description: >-
+          Opt in. Skip the jobs while an upstream `Depends-on:` PR has pending or failed
+          checks; they run once it is green or merged (see depends-on-rerun.yaml for the
+          automatic re-run). Default false.
+        type: boolean
+        default: false
       extra-packages:
         description: "Packages appended to setup-r-dependencies `extra-packages` (newline-separated)."
         type: string
@@ -116,7 +131,27 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  ## Opt-in (`depends-on-gate`): holds the other jobs back while an upstream
+  ## `Depends-on:` PR is pending or failed. Skipped by default. See
+  ## install-depends-on/README.md.
+  depends-on-gate:
+    if: ${{ inputs.depends-on-gate }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      ready: ${{ steps.gate.outputs.ready }}
+      config: ${{ steps.gate.outputs.config }}
+    steps:
+      - id: gate
+        uses: PredictiveEcology/actions/install-depends-on@main
+        with:
+          mode: gate
+          hold: ${{ inputs.depends-on-gate }}
+
   test-coverage:
+    needs: depends-on-gate
+    ## A skipped gate (the default) lets the job run exactly as before.
+    if: ${{ !cancelled() && needs.depends-on-gate.result != 'failure' && (needs.depends-on-gate.result == 'skipped' || needs.depends-on-gate.outputs.ready == 'true') }}
     runs-on: ubuntu-latest
     env:
       GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
@@ -180,6 +215,15 @@ jobs:
           # without version numbers so it survives the next runner bump.
           use-public-rspm: true
 
+      ## Opt-in (`depends-on-virtual-bump`): before the solve, so a floor written as
+      ## the post-merge version of a `Depends-on:` PR resolves against that PR.
+      - id: depends-on
+        if: ${{ inputs.depends-on-virtual-bump }}
+        uses: PredictiveEcology/actions/install-depends-on@main
+        with:
+          mode: prepare
+          extra-packages: ${{ inputs.extra-packages }}
+
       # Cache key carries the geospatial ABI, same as setup-r-deps (#48).
       # Without it the restore-key is just <os>-<R>-<arch>-1-, which matches the
       # most recent library ANY job saved in that pool -- including one linked
@@ -197,7 +241,7 @@ jobs:
           extra-packages: |
             any::covr
             any::xml2
-            ${{ inputs.extra-packages }}
+            ${{ steps.depends-on.outputs.extra-packages || inputs.extra-packages }}
 
       - name: Install additional package dependencies
         if: ${{ inputs.post-install != '' }}

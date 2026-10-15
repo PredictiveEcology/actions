@@ -1,25 +1,96 @@
 name: 'install-depends-on'
 description: >-
-  Install the open pull requests listed as `Depends-on: owner/repo#N` lines in
-  the description of the pull request under test, so it is tested against that
-  unmerged code. A no-op when there are no such lines or the event is not a
-  pull request. Run it AFTER the normal dependency install.
+  Test a pull request against the open pull requests listed as
+  `Depends-on: owner/repo#N` lines in its description. `mode` picks the job:
+  prepare (before the dependency solve: a copy of each upstream PR with its Version
+  raised by one, as `local::` entries for the solver), install (after the install:
+  put those copies in), gate (are the upstream PRs green?) or rerun (re-run this
+  repository's runs the gate skipped). A no-op when there are no such lines or the
+  event is not a pull request.
 author: 'Eliot McIntire'
 
 inputs:
+  mode:
+    description: "prepare, install, gate or rerun. The default, install, is the original behaviour: run it AFTER the normal dependency install."
+    required: false
+    default: install
   token:
-    description: "Token for the GitHub API reads and for pak. The default token is enough for public repositories."
+    description: "Token for the GitHub API reads and for pak. The default token is enough for public repositories. rerun needs `actions: write`."
     required: false
     default: ${{ github.token }}
+  extra-packages:
+    description: "prepare: the caller's extra-packages (newline-separated); the output is these plus one `local::` line per open upstream PR."
+    required: false
+    default: ""
+  hold:
+    description: "gate: `true` to report `ready=false` while an upstream PR is pending or failed; `false` only computes `config`."
+    required: false
+    default: "true"
+  reduced-matrix:
+    description: "gate: `true` to emit `config` (three release legs) while an upstream PR is open."
+    required: false
+    default: "false"
+  preinstall:
+    description: "prepare: also install the `local::` copies now, for workflows that do not solve through pak (modules install through Require)."
+    required: false
+    default: "false"
+
+outputs:
+  extra-packages:
+    description: "prepare: `extra-packages` plus the `local::` lines, to pass to setup-r-dependencies."
+    value: ${{ steps.run.outputs.extra-packages }}
+  ready:
+    description: "gate: `true` when every upstream PR is green, merged or closed, or there is none; `false` while one is pending or failed."
+    value: ${{ steps.run.outputs.ready || steps.look.outputs.ready }}
+  config:
+    description: "gate: JSON list of matrix legs to run while an upstream PR is open; empty means the full matrix."
+    value: ${{ steps.run.outputs.config }}
 
 runs:
   using: "composite"
   steps:
-    ## Everything goes through `env:` rather than being pasted into script source.
-    - name: Install Depends-on pull requests
+    ## gate and rerun need R only when some description has a Depends-on line, so
+    ## the common case (no line, or a push) finishes here without installing R.
+    - name: Is there anything to check
+      id: look
+      if: inputs.mode == 'gate' || inputs.mode == 'rerun'
       shell: bash
       env:
         GH_TOKEN: ${{ inputs.token }}
+        MODE: ${{ inputs.mode }}
+        EVENT_NAME: ${{ github.event_name }}
+        REPO: ${{ github.repository }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+      run: |
+        needed=false
+        if [ "$MODE" = rerun ]; then
+          n=$(gh pr list --repo "$REPO" --state open --limit 200 --json body \
+                --jq '[.[] | select((.body // "") | test("depends-on:"; "i"))] | length') || n=0
+          [ "${n:-0}" -gt 0 ] && needed=true
+        elif [ "$EVENT_NAME" = pull_request ]; then
+          gh api "repos/$REPO/pulls/$PR_NUMBER" --jq '.body // ""' 2>/dev/null | grep -qi 'depends-on:' && needed=true
+        fi
+        echo "needed=$needed" >> "$GITHUB_OUTPUT"
+        if [ "$needed" = false ]; then
+          echo "ready=true" >> "$GITHUB_OUTPUT"
+          echo "Depends-on: nothing to check."
+        fi
+
+    - uses: r-lib/actions/setup-r@v2
+      if: steps.look.outputs.needed == 'true'
+
+    ## Everything goes through `env:` rather than being pasted into script source.
+    - name: Depends-on (${{ inputs.mode }})
+      id: run
+      if: (inputs.mode != 'gate' && inputs.mode != 'rerun') || steps.look.outputs.needed == 'true'
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+        DEPENDS_ON_MODE: ${{ inputs.mode }}
+        INPUT_EXTRA_PACKAGES: ${{ inputs.extra-packages }}
+        INPUT_PREINSTALL: ${{ inputs.preinstall }}
+        INPUT_HOLD: ${{ inputs.hold }}
+        INPUT_REDUCED_MATRIX: ${{ inputs.reduced-matrix }}
         EVENT_NAME: ${{ github.event_name }}
         REPO: ${{ github.repository }}
         PR_NUMBER: ${{ github.event.pull_request.number }}
