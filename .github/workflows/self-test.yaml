@@ -58,6 +58,11 @@ on:
       - ".github/workflows/revdeps.yaml"
       - ".github/workflows/test-coverage.yaml"
       - ".github/workflows/test-downstream.yaml"
+      ## The module workflows: tests/default-matrix-test.py checks how their jobs
+      ## depend on depends-on-gate, so an edit to one of them must run it (#80).
+      - ".github/workflows/testthat-module.yaml"
+      - ".github/workflows/render-module-rmd.yaml"
+      - ".github/workflows/pkgdown-module.yaml"
   workflow_dispatch:
 
 concurrency:
