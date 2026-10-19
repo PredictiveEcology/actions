@@ -34,6 +34,7 @@ on:
       - "install-depends-on/**"
       - "tests/depends-on-test.R"
       - "tests/default-matrix-test.py"
+      - "tests/render-commit-test.py"
       - ".github/workflows/R-CMD-check.yaml"
       - ".github/workflows/depends-on-rerun.yaml"
       - "install-Rmd-pkgs/**"
@@ -382,6 +383,18 @@ jobs:
       - run: Rscript tests/depends-on-test.R
         shell: bash
       - run: pip install pyyaml && python3 tests/default-matrix-test.py
+        shell: bash
+
+  ## render-module-rmd's commit step, run as written against a local repository in
+  ## place of GitHub (no network, no token), on a branch that moved after the run
+  ## started: the case that made it conflict on every attempt.
+  render-commit:
+    name: render-module-rmd commit step
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - run: pip install pyyaml && python3 tests/render-commit-test.py
         shell: bash
 
   ## Gate mode on a pull request with no `Depends-on:` line (this one): it must
