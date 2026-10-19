@@ -29,6 +29,26 @@ def check(cond, what):
     print("ok:", what)
 
 
+# GitHub's status-check functions; a job `if:` naming none gets an implicit success().
+STATUS = re.compile(r"\b(success|failure|always|cancelled)\(")
+
+
+def needs(job):
+    n = job.get("needs", [])
+    return [n] if isinstance(n, str) else list(n)
+
+
+def upstream(jobs, name):
+    """Every job `name` needs, directly or through other jobs."""
+    seen, todo = set(), needs(jobs[name])
+    while todo:
+        n = todo.pop()
+        if n not in seen:
+            seen.add(n)
+            todo += needs(jobs[n])
+    return seen
+
+
 wf = load("R-CMD-check")
 inputs = wf[True]["workflow_call"]["inputs"]  # PyYAML reads the key `on` as True
 for n in (BUMP, GATE, "depends-on-reduced-matrix"):
@@ -60,3 +80,13 @@ for name, main in [("R-CMD-check", "R-CMD-check"), ("test-coverage", "test-cover
             if str(s.get("uses", "")).startswith("PredictiveEcology/actions/install-depends-on")
             and "with" not in s]
     check(len(post) == 1 and "if" not in post[0], name + ": the after-install step is unchanged")
+    # The implicit success() is false when any upstream job was skipped, as the gate is by
+    # default, so every job after the gate names a status function and checks its needs.
+    for j in jobs:
+        if j != GATE and GATE in upstream(jobs, j):
+            cond = str(jobs[j].get("if", ""))
+            check(STATUS.search(cond), name + ": " + j + " names a status function")
+            for p in needs(jobs[j]):
+                if p != GATE:
+                    check("needs.%s.result == 'success'" % p in cond,
+                          name + ": " + j + " runs only once " + p + " succeeded")
