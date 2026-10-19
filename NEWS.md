@@ -1,5 +1,15 @@
 # PredictiveEcology/actions (development)
 
+- **`render-module-rmd`'s commit job no longer fails when the branch moved after the run
+  started.** It committed the render on the commit that triggered the run and rebased
+  that onto the branch. When two pushes came close together (a PR merge, then a version
+  bump), the first run's render landed first, and the second run's rebase conflicted
+  with it in `<module>.html` and `<module>.md` on all three attempts, since both renders
+  change the same or adjacent lines (version, date); the branch kept the older render.
+  Each attempt now fetches the branch tip, resets to it, copies the rendered files in and
+  pushes, so nothing is merged. `tests/render-commit-test.py` runs the step against a
+  local repository.
+
 - **With `depends-on-gate` off (the default), `render-module-rmd` commits its rendered
   files and `pkgdown-module` deploys its site again.** Since the gate was added both
   jobs were skipped in every run: a job-level `if:` with no status function gets
