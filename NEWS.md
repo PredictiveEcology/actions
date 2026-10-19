@@ -1,5 +1,10 @@
 # PredictiveEcology/actions (development)
 
+- **The module jobs stop after 60 minutes:** `testthat-module`, and the render and build jobs
+  of `render-module-rmd` and `pkgdown-module`. A hung dependency install otherwise ran to
+  GitHub's 6 h default while holding the module's concurrency group, so later runs of that
+  module waited or were cancelled. Successful runs take a median 7-9 min and at most 39.
+
 - **`render-module-rmd`'s commit job no longer fails when the branch moved after the run
   started.** It committed the render on the commit that triggered the run and rebased
   that onto the branch. When two pushes came close together (a PR merge, then a version

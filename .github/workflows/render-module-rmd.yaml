@@ -115,6 +115,9 @@ jobs:
     if: ${{ !cancelled() && needs.depends-on-gate.result != 'failure' && (needs.depends-on-gate.result == 'skipped' || needs.depends-on-gate.outputs.ready == 'true') }}
     name: Render module Rmd
     runs-on: ubuntu-latest
+    ## Without a cap a hung dependency install runs to GitHub's 6 h default and holds this
+    ## module's concurrency group; successful runs take a median 7-9 min, at most 39 (2026-10).
+    timeout-minutes: 60
     permissions:
       contents: read
     ## Every GitHub install in this job -- remotes::install_github() for Require,

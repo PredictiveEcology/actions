@@ -90,3 +90,6 @@ for name, main in [("R-CMD-check", "R-CMD-check"), ("test-coverage", "test-cover
                 if p != GATE:
                     check("needs.%s.result == 'success'" % p in cond,
                           name + ": " + j + " runs only once " + p + " succeeded")
+    # A hung install otherwise runs to the 6 h default and holds the module's concurrency group.
+    if name in ("testthat-module", "render-module-rmd", "pkgdown-module"):
+        check(jobs[main].get("timeout-minutes", 360) <= 60, name + ": " + main + " stops within 60 minutes")
