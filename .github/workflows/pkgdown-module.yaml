@@ -242,7 +242,9 @@ jobs:
 
   deploy:
     needs: build
-    if: ${{ github.event_name != 'pull_request' }}
+    ## Keep `!cancelled()`: without a status function GitHub applies success(), which
+    ## is false if any upstream job was skipped, as depends-on-gate is by default.
+    if: ${{ !cancelled() && needs.build.result == 'success' && github.event_name != 'pull_request' }}
     name: Deploy to GitHub Pages
     runs-on: ubuntu-latest
     permissions:

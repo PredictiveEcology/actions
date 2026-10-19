@@ -249,7 +249,9 @@ jobs:
     ## Only on a push. The generated file also ran this on pull_request, where
     ## `github.ref` is refs/pull/N/merge and the push cannot succeed -- it failed
     ## silently every time, swallowed by `|| echo "No changes to commit"`.
-    if: ${{ github.event_name == 'push' }}
+    ## Keep `!cancelled()`: without a status function GitHub applies success(), which
+    ## is false if any upstream job was skipped, as depends-on-gate is by default.
+    if: ${{ !cancelled() && needs.render.result == 'success' && github.event_name == 'push' }}
     name: Commit rendered files (only pushes to main/development)
     runs-on: ubuntu-latest
     permissions:

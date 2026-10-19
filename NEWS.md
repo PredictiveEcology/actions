@@ -1,5 +1,13 @@
 # PredictiveEcology/actions (development)
 
+- **With `depends-on-gate` off (the default), `render-module-rmd` commits its rendered
+  files and `pkgdown-module` deploys its site again.** Since the gate was added both
+  jobs were skipped in every run: a job-level `if:` with no status function gets
+  GitHub's implicit `success()`, which is false when any upstream job was skipped, and
+  the gate job is skipped by default. Both `if:`s now start with `!cancelled()` and
+  check that the job they need succeeded; `tests/default-matrix-test.py` checks every
+  job downstream of the gate for this.
+
 - **Opt-in options for PRs that carry `Depends-on:` lines; nothing changes unless a
   caller sets them.** The reusable workflows `R-CMD-check`, `test-coverage`, `pkgdown`,
   `testthat-module`, `render-module-rmd` and `pkgdown-module` take
