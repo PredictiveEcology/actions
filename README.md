@@ -176,10 +176,13 @@ it; the legend is under the second table.
 | `timeout` | – | – | – | – | ✅ `30` | – | – | – | – | – |
 | `downstream` | – | – | – | ✅ **required** | – | – | – | – | – | – |
 | `run-in-tmux` | – | ✅ `false` | – | – | – | – | – | – | – | – |
+| `check-timeout-minutes` | ✅ `20` | – | – | – | – | – | – | – | – | – |
 | `depends-on-gate` | ✅ `false` | ✅ `false` | ✅ `false` | – | – | – | ✅ `false` | ✅ `false` | ✅ `false` | – |
 | `depends-on-reduced-matrix` | ✅ `false` | – | – | – | – | – | – | – | – | – |
 | `depends-on-virtual-bump` | ✅ `false` | ✅ `false` | ✅ `false` | – | – | – | ✅ `false` | ✅ `false` | ✅ `false` | – |
+| `deps-timeout-minutes` | ✅ `15` | – | – | – | – | – | – | – | – | – |
 | `module-dir` | – | – | – | – | – | – | ✅ `""` | ✅ `""` | – | – |
+| `timeout-minutes` | ✅ `40` | – | – | – | – | – | – | – | – | – |
 
 <!-- END GENERATED: inputs -->
 
