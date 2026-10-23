@@ -197,11 +197,16 @@ jobs:
         if: inputs.system-deps
         uses: PredictiveEcology/actions/install-spatial-deps@main
 
+      ## Through install-apt-packages, not a bare apt-get install: after an apt
+      ## cache hit above, the apt lists are the cached ones, and a tmux version
+      ## they name may be gone from the mirror.
       - name: Install tmux
         if: ${{ inputs.run-in-tmux }}
-        run: |
-          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y tmux
-          tmux -V
+        uses: PredictiveEcology/actions/install-apt-packages@main
+        with:
+          packages: tmux
+      - if: ${{ inputs.run-in-tmux }}
+        run: tmux -V
         shell: bash
 
       - uses: r-lib/actions/setup-r@v2
