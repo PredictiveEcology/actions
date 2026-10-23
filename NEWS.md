@@ -1,6 +1,6 @@
 # PredictiveEcology/actions (development)
 
-- **System packages on Linux are cached, and a stuck job stops after 25 minutes.**
+- **System packages on Linux are cached, and a stuck job stops instead of running for hours.**
   On some runners the Ubuntu mirror serves 40-100 kB/s, and three uncapped or
   barely capped apt rounds (spatial libraries, `setup-r`, pak's system
   requirements) once took 40 minutes. The new `install-apt-packages` action keeps
@@ -11,12 +11,15 @@
   plus `setup-r`'s packages before R, then the system requirements computed with
   `pak::pkg_sysreqs()` after R, with `PKG_SYSREQS=false` for `setup-r-dependencies`
   once they are in. If computing or installing them fails, pak installs them as before.
-  `R-CMD-check` limits the dependency setup step (`deps-timeout-minutes`, default 15) and
-  the check step (`check-timeout-minutes`, default 20); a step that hits its limit ends
+  `R-CMD-check` limits the dependency setup step (`deps-timeout-minutes`, default 60) and
+  the check step (`check-timeout-minutes`, default 45); a step that hits its limit ends
   with a `Timed out` error annotation and summary line (via `report-timeout`), saying it
   was usually a slow mirror and to re-run. The job itself has a backstop `timeout-minutes`
-  (default 40, above the two step limits together, so a step limit fires first). Callers change
-  nothing; a package whose checks run longer can raise the inputs.
+  (default 120, above the two step limits together, so a step limit fires first). Callers change
+  nothing. The defaults are well above the longest recent passing runs (a 75-minute
+  dependency install, a 24-minute check), so they catch stalls, not slow packages;
+  a repo can lower them. `test-coverage` installs `tmux` through
+  `install-apt-packages`, since after a cache hit the apt lists may be days old.
 
 - **New `install-apt-packages` action.** Installs Ubuntu packages with apt, capped and
   retried, and caches the downloaded `.deb` files and apt lists in `actions/cache`
