@@ -273,7 +273,7 @@ jobs:
 
       - name: Upload check results
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: ${{ steps.pkg.outputs.name }}-downstream-${{ strategy.job-index }}-results
           path: check
