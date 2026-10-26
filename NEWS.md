@@ -21,6 +21,13 @@
   a repo can lower them. `test-coverage` installs `tmux` through
   `install-apt-packages`, since after a cache hit the apt lists may be days old.
 
+- **An apt timeout during unpacking no longer fails every retry** (pre-existing on `main`).
+  On a slow mirror the 10-minute cap could fire just after the download finished, while
+  `dpkg` was unpacking. That left `dpkg` "interrupted", and the remaining attempts failed in
+  seconds. Each attempt now runs `dpkg --configure -a` first, and packages are downloaded
+  (`--download-only`, safe to kill and resumed by the next attempt) before they are
+  installed. Fixed in `install-apt-packages` and the copies in `pkgdown-module`,
+  `render-module-rmd` and `testthat-module`.
 - **New `install-apt-packages` action.** Installs Ubuntu packages with apt, capped and
   retried, and caches the downloaded `.deb` files and apt lists in `actions/cache`
   (keyed on OS, `ImageVersion` and the package list), so a repeat run downloads
