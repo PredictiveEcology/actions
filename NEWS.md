@@ -28,6 +28,12 @@
   (`--download-only`, safe to kill and resumed by the next attempt) before they are
   installed. Fixed in `install-apt-packages` and the copies in `pkgdown-module`,
   `render-module-rmd` and `testthat-module`.
+
+- **`install-depends-on` skips a `Depends-on:` PR that is a SpaDES module.** A module has no
+  `DESCRIPTION`, so `prepare` and `install` stopped with an error and failed the caller's
+  job (fireSense_summary#28 -> fireSense_spreadPredict#32). They now skip it with a note;
+  package upstreams are unchanged.
+
 - **New `install-apt-packages` action.** Installs Ubuntu packages with apt, capped and
   retried, and caches the downloaded `.deb` files and apt lists in `actions/cache`
   (keyed on OS, `ImageVersion` and the package list), so a repeat run downloads

@@ -165,6 +165,8 @@ depends_on_dir <- function() {
 
 ## The head of an open upstream PR as a local package with its Version bumped,
 ## fetched once per job: prepare and install must hand the solver the same copy.
+## NULL when the repository is a SpaDES module (no DESCRIPTION at its root): there
+## is nothing to install, and the gate still waits on its checks.
 fetch_bumped_package <- function(dep_repo, number, sha) {
   base <- file.path(depends_on_dir(), paste0(gsub("/", "-", dep_repo), "-", number))
   pkg_dir <- file.path(base, "pkg")
@@ -178,8 +180,8 @@ fetch_bumped_package <- function(dep_repo, number, sha) {
     utils::untar(tarball, exdir = file.path(base, "untar"))
     top <- list.dirs(file.path(base, "untar"), recursive = FALSE)
     if (length(top) != 1 || !file.exists(file.path(top, "DESCRIPTION"))) {
-      stop(dep_repo, "#", number, " has no DESCRIPTION at its root: only package repositories ",
-           "can be a Depends-on target.", call. = FALSE)
+      unlink(base, recursive = TRUE)
+      return(NULL)
     }
     file.rename(top, pkg_dir)
     desc <- file.path(pkg_dir, "DESCRIPTION")
@@ -215,20 +217,24 @@ prepare_or_install <- function(mode, repo, number) {
       msg <- skip_message(d$ref, d$status)
     } else {
       dir <- fetch_bumped_package(d$repo, d$number, d$sha)
-      pkg <- read.dcf(file.path(dir, "DESCRIPTION"), "Package")[1]
-      version <- read.dcf(file.path(dir, "DESCRIPTION"), "Version")[1]
-      ref <- paste0("local::", dir)
-      if (mode == "prepare") {
-        local_refs <- c(local_refs, ref)
-        msg <- sprintf("Depends-on: prepared %s -> %s %s (virtual bump of its head %s), for the dependency solve",
-                       d$ref, pkg, version, substr(d$sha, 1, 7))
+      if (is.null(dir)) {
+        msg <- sprintf("Depends-on: skipped %s (a SpaDES module, not a package: nothing to install)", d$ref)
       } else {
-        install_pak()
-        cat("::group::Depends-on: installing ", d$ref, "\n", sep = "")
-        pak::pkg_install(ref, upgrade = TRUE, ask = FALSE)
-        cat("::endgroup::\n")
-        msg <- sprintf("Depends-on: installed %s -> %s %s (sha %s)", d$ref, pkg, version,
-                       substr(d$sha, 1, 7))
+        pkg <- read.dcf(file.path(dir, "DESCRIPTION"), "Package")[1]
+        version <- read.dcf(file.path(dir, "DESCRIPTION"), "Version")[1]
+        ref <- paste0("local::", dir)
+        if (mode == "prepare") {
+          local_refs <- c(local_refs, ref)
+          msg <- sprintf("Depends-on: prepared %s -> %s %s (virtual bump of its head %s), for the dependency solve",
+                         d$ref, pkg, version, substr(d$sha, 1, 7))
+        } else {
+          install_pak()
+          cat("::group::Depends-on: installing ", d$ref, "\n", sep = "")
+          pak::pkg_install(ref, upgrade = TRUE, ask = FALSE)
+          cat("::endgroup::\n")
+          msg <- sprintf("Depends-on: installed %s -> %s %s (sha %s)", d$ref, pkg, version,
+                         substr(d$sha, 1, 7))
+        }
       }
     }
     message(msg)

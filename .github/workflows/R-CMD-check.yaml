@@ -343,10 +343,16 @@ jobs:
       # exactly how a leg silently skipping its entire suite stayed green.
       #
       # testthat.Rout* is excluded; the upstream step already prints it.
+      # If an earlier step failed, check/ does not exist; exit 0 so this step
+      # does not add a second error that hides the real one.
       - name: Show test output
         if: always()
         shell: bash
         run: |
+          if [ ! -d check ]; then
+            echo "No check/ directory: R CMD check did not run."
+            exit 0
+          fi
           find check -path '*/tests/*' \( -name '*.Rout' -o -name '*.Rout.fail' \) \
             ! -name 'testthat.Rout*' \
             | while read -r f; do

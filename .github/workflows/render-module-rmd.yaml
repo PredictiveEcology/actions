@@ -244,7 +244,7 @@ jobs:
       ## manual stayed current while the repo front page drifted: Biomass_borealDataPrep's
       ## README still documented two parameters that had been removed. `if-no-files-found`
       ## fires only when NOTHING matches, so a module without `keep_md` is unaffected.
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: module-html-${{ inputs.module }}
           path: |
@@ -273,7 +273,7 @@ jobs:
       ## One artifact per module: a repository with several modules calls this workflow
       ## once per module in the same run. Into a scratch folder, not the checkout: the
       ## next step resets the checkout to the branch tip, then copies these files in.
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: module-html-${{ inputs.module }}
           path: ${{ runner.temp }}/render

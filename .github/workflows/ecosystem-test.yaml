@@ -237,10 +237,16 @@ jobs:
           args: 'c("--no-manual", "--as-cran")'
           build_args: 'c("--no-manual")'
 
+      # If an earlier step failed, pkg/check/ does not exist; exit 0 so this
+      # step does not add a second error that hides the real one.
       - name: Show test output
         if: always()
         shell: bash
         run: |
+          if [ ! -d pkg/check ]; then
+            echo "No pkg/check/ directory: R CMD check did not run."
+            exit 0
+          fi
           find pkg/check -path '*/tests/*' \( -name '*.Rout' -o -name '*.Rout.fail' \) \
             | while read -r f; do
                 echo "::group::$f"

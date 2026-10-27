@@ -100,7 +100,7 @@ jobs:
           library(cffr)
           cff_write(keys = list())
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: citation-cff
           path: CITATION.cff
@@ -119,7 +119,7 @@ jobs:
           ## leave a write-scoped credential on disk.
           persist-credentials: false
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: citation-cff
 
