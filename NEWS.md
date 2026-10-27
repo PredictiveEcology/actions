@@ -1,5 +1,34 @@
 # PredictiveEcology/actions (development)
 
+- **System packages on Linux are cached, and a stuck job stops instead of running for hours.**
+  On some runners the Ubuntu mirror serves 40-100 kB/s, and three uncapped or
+  barely capped apt rounds (spatial libraries, `setup-r`, pak's system
+  requirements) once took 40 minutes. The new `install-apt-packages` action keeps
+  the downloaded `.deb` files and apt lists in `actions/cache`, keyed on OS,
+  `ImageVersion` and the package list, with the existing capped retry.
+  `install-spatial-deps` uses it (new input `extra-apt-packages`), and
+  `setup-r-deps` now installs everything in two cached rounds: the spatial libraries
+  plus `setup-r`'s packages before R, then the system requirements computed with
+  `pak::pkg_sysreqs()` after R, with `PKG_SYSREQS=false` for `setup-r-dependencies`
+  once they are in. If computing or installing them fails, pak installs them as before.
+  `R-CMD-check` limits the dependency setup step (`deps-timeout-minutes`, default 60) and
+  the check step (`check-timeout-minutes`, default 45); a step that hits its limit ends
+  with a `Timed out` error annotation and summary line (via `report-timeout`), saying it
+  was usually a slow mirror and to re-run. The job itself has a backstop `timeout-minutes`
+  (default 120, above the two step limits together, so a step limit fires first). Callers change
+  nothing. The defaults are well above the longest recent passing runs (a 75-minute
+  dependency install, a 24-minute check), so they catch stalls, not slow packages;
+  a repo can lower them. `test-coverage` installs `tmux` through
+  `install-apt-packages`, since after a cache hit the apt lists may be days old.
+
+- **An apt timeout during unpacking no longer fails every retry** (pre-existing on `main`).
+  On a slow mirror the 10-minute cap could fire just after the download finished, while
+  `dpkg` was unpacking. That left `dpkg` "interrupted", and the remaining attempts failed in
+  seconds. Each attempt now runs `dpkg --configure -a` first, and packages are downloaded
+  (`--download-only`, safe to kill and resumed by the next attempt) before they are
+  installed. Fixed in `install-apt-packages` and the copies in `pkgdown-module`,
+  `render-module-rmd` and `testthat-module`.
+
 - **`install-depends-on` skips a `Depends-on:` PR that is a SpaDES module.** A module has no
   `DESCRIPTION`, so `prepare` and `install` stopped with an error and failed the caller's
   job (fireSense_summary#28 -> fireSense_spreadPredict#32). They now skip it with a note;

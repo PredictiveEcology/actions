@@ -2,6 +2,15 @@ name: 'install-spatial-deps'
 description: 'Action to install system dependencies of geospatial packages'
 author: 'Alex Chubaty'
 
+inputs:
+  extra-apt-packages:
+    description: >-
+      Further Linux apt packages (whitespace-separated) to install in the same
+      apt transaction, so a caller needing more system packages pays for one
+      download and one cache entry rather than several. Ignored off Linux.
+    required: false
+    default: ""
+
 outputs:
   abi:
     description: >-
@@ -20,46 +29,24 @@ outputs:
 runs:
   using: "composite"
   steps:
+      ## Referenced by full name, not `./`: inside a composite action a relative
+      ## `uses:` resolves against the CALLER's checkout (see setup-r-deps).
+      ##
+      ## The apt block (timeouts, capped retries, no ubuntugis PPA, the .deb
+      ## cache) lives in install-apt-packages. NO ubuntugis-unstable PPA: it
+      ## installs libgdal37 (GDAL 3.11.x), but Posit's noble binary cache builds
+      ## quickPlot/sf/terra against the Ubuntu-default libgdal34 -- the ABI
+      ## mismatch surfaces as `libgdal.so.34: cannot open shared object file`
+      ## when quickPlot loads, and fails the whole check via a lazy-load.
       - name: Install geospatial system dependencies (Linux)
         if: runner.os == 'Linux'
-        env:
-          ## an unattended apt-get can otherwise block indefinitely on a debconf prompt
-          DEBIAN_FRONTEND: noninteractive
-        run: |
-          ## Each apt call is wrapped in `timeout` and retried. Composite-action steps do NOT
-          ## support `timeout-minutes`, so without this a slow/unreachable ubuntugis PPA or apt
-          ## mirror simply stalls -- and with no cap the job burns GitHub's full 6h ceiling before
-          ## anyone finds out. That happened on 2026-08-19: two LandWebUtils jobs sat here for
-          ## 6h0m and were killed, while every other ubuntu job in the same matrix was degraded
-          ## (devel took 56m against its usual ~8m). A rerun of the identical commit passed in
-          ## 6-9m, i.e. the PPA/mirrors were transiently unhealthy, not the package.
-          retry() {
-            local n
-            for n in 1 2 3; do
-              if timeout --kill-after=60s "$1" bash -c "$2"; then
-                return 0
-              fi
-              echo "::warning::'$2' failed or timed out (attempt $n/3); retrying..."
-              sleep $((n * 15))
-            done
-            echo "::error::'$2' still failing after 3 attempts"
-            return 1
-          }
-          ## NO ubuntugis-unstable PPA. It installs libgdal37 (GDAL 3.11.x), but
-          ## Posit's noble binary cache builds quickPlot/sf/terra against the
-          ## Ubuntu-default libgdal34 -- the ABI mismatch surfaces as
-          ## `libgdal.so.34: cannot open shared object file` when quickPlot loads,
-          ## and fails the whole check via a lazy-load. This action used to add
-          ## the PPA while the reusable workflows deliberately refused it, so the
-          ## org shipped two contradictory answers to the same question.
-          printf 'Acquire::Retries "5";\nAcquire::http::Timeout "30";\nAcquire::https::Timeout "30";\n' \
-            | sudo tee /etc/apt/apt.conf.d/99-ci-timeouts > /dev/null
-          retry 5m  "sudo -E DEBIAN_FRONTEND=noninteractive apt-get update -y"
-          retry 10m "sudo -E DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a \
-                       apt-get install -y --no-install-recommends \
-                       pkg-config libudunits2-dev libgdal-dev libgeos-dev libproj-dev libsqlite3-dev"
-          ## Fail loudly rather than proceeding with silently different libraries.
-          gdal-config --version && geos-config --version && pkg-config --modversion proj
+        uses: PredictiveEcology/actions/install-apt-packages@main
+        with:
+          packages: pkg-config libudunits2-dev libgdal-dev libgeos-dev libproj-dev libsqlite3-dev ${{ inputs.extra-apt-packages }}
+      - name: Check the geospatial libraries (Linux)
+        if: runner.os == 'Linux'
+        ## Fail loudly rather than proceeding with silently different libraries.
+        run: gdal-config --version && geos-config --version && pkg-config --modversion proj
         shell: bash
       - name: Install geospatial system dependencies (macOS)
         if: runner.os == 'macOS'

@@ -87,6 +87,9 @@ runs:
         retry() {
           local n
           for n in 1 2 3; do
+            ## A timeout while dpkg is unpacking leaves it "interrupted", and every later
+            ## apt-get then fails at once until this runs; it does nothing otherwise.
+            sudo dpkg --configure -a || true
             if timeout --kill-after=60s "$1" bash -c "$2"; then
               return 0
             fi
@@ -111,6 +114,9 @@ runs:
         fi
         if [ "$done_" != "true" ]; then
           retry 5m  "sudo -E apt-get update -y"
+          ## Downloads run under their own timeout: killing one is harmless, and the next
+          ## attempt keeps what was fetched. The install then reads only local files.
+          retry 10m "$install_cmd --download-only"
           retry 10m "$install_cmd"
         fi
         ## What the next run will restore. Created only when this run had to download.
