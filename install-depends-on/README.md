@@ -48,7 +48,8 @@ nothing. To use it in your own workflow, add it after the dependency install:
   the post-merge version and tests the unmerged code. `preinstall: true` also installs
   the copies, for module workflows that resolve through Require. `install` mode afterwards
   installs the same bumped copies, so the version never drops below the floor. The
-  upstream must be a package repository (a `DESCRIPTION` at its root).
+  upstream that is a SpaDES module (no `DESCRIPTION` at its root) is skipped with a
+  note in the summary, since there is nothing to install; the `gate` still waits on its checks.
 - `gate`: outputs `ready` (`false` while an upstream PR has pending or failed checks at its
   head, with `waiting for owner/repo#N (pending|failed)` in the job summary) and, with
   `reduced-matrix: true`, `config`, three release legs while an upstream is open. Without a
