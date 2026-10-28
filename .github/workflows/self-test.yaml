@@ -645,3 +645,31 @@ jobs:
             echo "ok   $(printf '%s\n' "$on_disk" | wc -l) composite actions, all listed"
           fi
           exit "$rc"
+
+  dbg-recommended:
+    runs-on: macOS-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          use-public-rspm: always
+      - shell: Rscript {0}
+        run: |
+          install.packages("pak", repos = "https://r-lib.github.io/p/pak/stable/")
+          old <- old.packages(instPkgs = installed.packages(priority = "recommended"))
+          print(old[, c("Installed","ReposVer")])
+          contrib <- contrib.url(getOption("repos"), type = "binary")[[1]]
+          files <- sprintf("%s_%s.tgz", rownames(old), old[, "ReposVer"])
+          dest <- file.path(tempdir(), files)
+          download.file(file.path(contrib, files), dest, method = "libcurl", mode = "wb")
+          lib <- Sys.getenv("R_LIBS_USER"); dir.create(lib, recursive = TRUE, showWarnings = FALSE)
+          install.packages(dest, repos = NULL, type = "binary", lib = lib)
+          print(.libPaths()); print(find.package("lattice")); print(packageVersion("lattice"))
+          print(readLines(file.path(find.package("lattice"), "DESCRIPTION")))
+          for (l in list(NULL, .libPaths())) {
+            p <- pak::pkg_deps("Matrix", dependencies = NA)
+            print(p[, c("package","version","type","platform")])
+          }
+          pl <- pak::lockfile_create("lattice", lockfile = "x.lock", lib = .libPaths())
+          print(readLines("x.lock")[1:60])
+          print(try(pak::pkg_install("lattice", lib = lib)))
