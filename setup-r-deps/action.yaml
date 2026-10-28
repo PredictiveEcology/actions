@@ -184,7 +184,10 @@ runs:
           files <- sprintf("%s_%s.tgz", rownames(old), old[, "ReposVer"])
           dest <- file.path(tempdir(), files)
           download.file(file.path(contrib, files), dest, method = "libcurl", mode = "wb")
-          install.packages(dest, repos = NULL, type = "binary", lib = .libPaths()[1])
+          ## setup-r-dependencies installs into R_LIBS_USER, so these go there too.
+          lib <- Sys.getenv("R_LIBS_USER")
+          dir.create(lib, recursive = TRUE, showWarnings = FALSE)
+          install.packages(dest, repos = NULL, type = "binary", lib = lib)
         }
 
     # THE fix for inheriting a library linked against libraries the runner no
