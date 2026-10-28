@@ -337,6 +337,10 @@ runs:
         pak-version: ${{ inputs.pak-version }}
         cache-version: ${{ steps.cache-version.outputs.value }}
         dependencies: ${{ inputs.dependencies }}
+        ## Default is an empty library, which lists every Recommended package in the
+        ## lockfile and downloads it from the P3M path that 404s on macOS (see the step
+        ## above). The library as it is, with the updated ones in it, leaves them out.
+        lockfile-create-lib: ${{ runner.os == 'macOS' && inputs.use-public-rspm == 'true' && '.libPaths()' || 'NULL' }}
         working-directory: ${{ inputs.working-directory }}
         extra-packages: ${{ steps.depends-on.outputs.extra-packages || inputs.extra-packages }}
       env:
