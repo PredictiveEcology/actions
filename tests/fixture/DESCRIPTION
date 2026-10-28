@@ -8,9 +8,17 @@ Description: Not a real package and not published anywhere. It exists so the
     self-test workflow has a DESCRIPTION to resolve dependencies against.
     terra is in Imports deliberately: it links GDAL/GEOS/PROJ, so it is the
     cheapest thing that fails when the geospatial system libraries are wrong.
+    Matrix, MASS, lattice and nlme are R's Recommended packages: Posit Package
+    Manager serves them from the contrib root, which pak does not look in, so
+    requiring their current releases is what exercises the macOS workaround in
+    setup-r-deps.
 License: GPL-3
 Encoding: UTF-8
 Imports:
-    terra
+    terra,
+    lattice (>= 0.23-1),
+    MASS (>= 7.3-66),
+    Matrix (>= 1.7-6),
+    nlme (>= 3.1-171)
 Suggests:
     testthat (>= 3.0.0)
