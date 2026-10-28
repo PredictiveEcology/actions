@@ -656,20 +656,18 @@ jobs:
       - shell: Rscript {0}
         run: |
           install.packages("pak", repos = "https://r-lib.github.io/p/pak/stable/")
-          old <- old.packages(instPkgs = installed.packages(priority = "recommended"))
-          print(old[, c("Installed","ReposVer")])
           contrib <- contrib.url(getOption("repos"), type = "binary")[[1]]
-          files <- sprintf("%s_%s.tgz", rownames(old), old[, "ReposVer"])
-          dest <- file.path(tempdir(), files)
-          download.file(file.path(contrib, files), dest, method = "libcurl", mode = "wb")
           lib <- Sys.getenv("R_LIBS_USER"); dir.create(lib, recursive = TRUE, showWarnings = FALSE)
-          install.packages(dest, repos = NULL, type = "binary", lib = lib)
-          print(.libPaths()); print(find.package("lattice")); print(packageVersion("lattice"))
-          print(readLines(file.path(find.package("lattice"), "DESCRIPTION")))
-          for (l in list(NULL, .libPaths())) {
-            p <- pak::pkg_deps("Matrix", dependencies = NA)
-            print(p[, c("package","version","type","platform")])
-          }
-          pl <- pak::lockfile_create("lattice", lockfile = "x.lock", lib = .libPaths())
-          print(readLines("x.lock")[1:60])
+          f <- file.path(tempdir(), "lattice_0.23-1.tgz")
+          download.file(file.path(contrib, basename(f)), f, mode = "wb")
+          cat("=== A: local:: install then standard\n")
+          print(try(pak::pkg_install(paste0("local::", f), lib = lib)))
           print(try(pak::pkg_install("lattice", lib = lib)))
+          cat("=== B: url::\n")
+          print(try(pak::pkg_install(paste0("url::", file.path(contrib, basename(f))), lib = lib)))
+          print(try(pak::pkg_install("lattice", lib = lib)))
+          cat("=== C: any::\n")
+          print(try(pak::pkg_install("any::lattice", lib = lib)))
+          cat("=== D: lockfile with lib\n")
+          pak::lockfile_create("lattice", lockfile = "y.lock", lib = c(lib, .Library))
+          print(try(pak::lockfile_install("y.lock", lib = lib)))
