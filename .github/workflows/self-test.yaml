@@ -645,25 +645,3 @@ jobs:
             echo "ok   $(printf '%s\n' "$on_disk" | wc -l) composite actions, all listed"
           fi
           exit "$rc"
-
-  dbg-recommended:
-    runs-on: macOS-latest
-    steps:
-      - uses: actions/checkout@v7
-      - uses: r-lib/actions/setup-r@v2
-        with:
-          use-public-rspm: always
-      - shell: Rscript {0}
-        run: |
-          install.packages("pak", repos = "https://r-lib.github.io/p/pak/stable/")
-          contrib <- contrib.url(getOption("repos"), type = "binary")[[1]]
-          lib <- Sys.getenv("R_LIBS_USER"); dir.create(lib, recursive = TRUE, showWarnings = FALSE)
-          f <- file.path(tempdir(), "lattice_0.23-1.tgz")
-          download.file(file.path(contrib, basename(f)), f, mode = "wb")
-          install.packages(f, repos = NULL, type = "binary", lib = lib)
-          print(packageVersion("lattice"))
-          cat("=== V4: dependency via deps::\n")
-          writeLines(c("Package: x","Version: 1","Imports: lattice (>= 0.23-1)"), "DESCRIPTION")
-          pak::lockfile_create(c("any::lattice","deps::."), lockfile = "w.lock", lib = .libPaths())
-          print(grep('"type"|"version"|"package"', readLines("w.lock"), value = TRUE)[1:24])
-          print(try(pak::lockfile_install("w.lock", lib = lib)))

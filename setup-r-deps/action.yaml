@@ -168,26 +168,37 @@ runs:
         use-public-rspm: ${{ (runner.os == 'macOS' && inputs.use-public-rspm == 'true') && 'always' || inputs.use-public-rspm }}
 
     ## Posit Package Manager's macOS index lists each Recommended package (lattice, MASS,
-    ## Matrix, nlme, ...) more than once, and the entry R and pak pick carries
-    ## `Path: <R version>/Recommended`. The binaries are in <contrib>/ itself, so every
-    ## download 404s and the install stops with "Failed to download lattice" whenever a
-    ## dependency needs a Recommended package newer than the one shipped with R. Fetch
-    ## the ones that are out of date from <contrib>/ directly; pak then finds them installed.
-    - name: Update R's Recommended packages (macOS)
+    ## Matrix, nlme, ...) with `Path: <R version>/Recommended`, since R 4.6.2 appeared, and
+    ## the binaries are not there (they are in <contrib>/ itself). pak puts every Recommended
+    ## package in the lockfile and downloads it from that path, so any macOS job whose
+    ## dependencies include one stops with "Failed to download lattice". While a Recommended
+    ## binary of this R series is missing at its listed path, use the newest dated snapshot
+    ## where it is not. Does nothing once Package Manager serves the files.
+    - name: Pin Posit Package Manager while its Recommended binaries are missing (macOS)
       if: runner.os == 'macOS' && inputs.use-public-rspm == 'true'
       shell: Rscript {0}
       run: |
-        old <- old.packages(instPkgs = installed.packages(priority = "recommended"))
-        if (!is.null(old)) {
-          message("updating: ", paste(rownames(old), collapse = ", "))
-          contrib <- contrib.url(getOption("repos"), type = "binary")[[1]]
-          files <- sprintf("%s_%s.tgz", rownames(old), old[, "ReposVer"])
-          dest <- file.path(tempdir(), files)
-          download.file(file.path(contrib, files), dest, method = "libcurl", mode = "wb")
-          ## setup-r-dependencies installs into R_LIBS_USER, so these go there too.
-          lib <- Sys.getenv("R_LIBS_USER")
-          dir.create(lib, recursive = TRUE, showWarnings = FALSE)
-          install.packages(dest, repos = NULL, type = "binary", lib = lib)
+        latest <- Sys.getenv("RSPM")
+        series <- paste(R.version$major, sub("[.].*", "", R.version$minor), sep = ".")
+        missingBinaries <- function(base) {
+          contrib <- contrib.url(base, type = "binary")
+          idx <- read.dcf(gzcon(url(paste0(contrib, "/PACKAGES.gz"))), c("Package", "Version", "Path"))
+          listed <- idx[grepl(paste0("^", series, "[.][0-9]+/Recommended$"), idx[, "Path"]), , drop = FALSE]
+          if (!nrow(listed)) return(FALSE)
+          url <- sprintf("%s/%s/%s_%s.tgz", contrib, listed[1, "Path"], listed[1, "Package"], listed[1, "Version"])
+          !grepl(" 200 ", curlGetHeaders(url)[1])
+        }
+        if (grepl("/cran/latest$", latest) && missingBinaries(latest)) {
+          for (back in 1:60) {
+            pin <- sub("latest$", format(Sys.Date() - back), latest)
+            if (!missingBinaries(pin)) break
+          }
+          message("Recommended binaries are missing from ", latest, "; using ", pin)
+          profile <- file.path(R.home("etc"), "Rprofile.site")
+          system2("sudo", c("sed", "-i", "''", shQuote(sprintf("s#%s#%s#g", latest, pin)), shQuote(profile)))
+          cat(sprintf("RSPM=%s\nRENV_CONFIG_REPOS_OVERRIDE=%s\n", pin, pin),
+              file = Sys.getenv("GITHUB_ENV"), append = TRUE)
+          cat(readLines(profile), sep = "\n")
         }
 
     # THE fix for inheriting a library linked against libraries the runner no
@@ -337,10 +348,6 @@ runs:
         pak-version: ${{ inputs.pak-version }}
         cache-version: ${{ steps.cache-version.outputs.value }}
         dependencies: ${{ inputs.dependencies }}
-        ## Default is an empty library, which lists every Recommended package in the
-        ## lockfile and downloads it from the P3M path that 404s on macOS (see the step
-        ## above). The library as it is, with the updated ones in it, leaves them out.
-        lockfile-create-lib: ${{ runner.os == 'macOS' && inputs.use-public-rspm == 'true' && '.libPaths()' || 'NULL' }}
         working-directory: ${{ inputs.working-directory }}
         extra-packages: ${{ steps.depends-on.outputs.extra-packages || inputs.extra-packages }}
       env:
