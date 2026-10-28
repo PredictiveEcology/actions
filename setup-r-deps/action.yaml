@@ -167,6 +167,22 @@ runs:
         ## Revisit when pak reads zstd.
         use-public-rspm: ${{ (runner.os == 'macOS' && inputs.use-public-rspm == 'true') && 'always' || inputs.use-public-rspm }}
 
+    ## pak asks for a binary Recommended package (lattice, MASS, Matrix, nlme, ...) at
+    ## <contrib>/<R version>/Recommended/, the CRAN layout. Posit Package Manager lists
+    ## them in <contrib>/ itself, so on macOS the download 404s and the install stops
+    ## with "Failed to download lattice" whenever a dependency needs a Recommended
+    ## package newer than the one shipped with R. install.packages() uses the listed
+    ## path, so bring them up to date with it first; pak then finds them installed.
+    - name: Update R's Recommended packages (macOS)
+      if: runner.os == 'macOS' && inputs.use-public-rspm == 'true'
+      shell: Rscript {0}
+      run: |
+        old <- old.packages(instPkgs = installed.packages(priority = "recommended"))
+        if (!is.null(old)) {
+          message("updating: ", paste(rownames(old), collapse = ", "))
+          install.packages(rownames(old), lib = .libPaths()[1])
+        }
+
     # THE fix for inheriting a library linked against libraries the runner no
     # longer has. `setup-r-dependencies` caches $R_LIBS_USER under an exact key
     # plus a BARE restore-key:
@@ -318,7 +334,9 @@ runs:
         extra-packages: ${{ steps.depends-on.outputs.extra-packages || inputs.extra-packages }}
       env:
         ## Off only when the step above installed them; otherwise pak's default.
-        PKG_SYSREQS: ${{ steps.sysreqs-install.outcome == 'success' && 'false' || 'true' }}
+        ## Also off on macOS, where pak cannot query system packages ("Unknown OS ...
+        ## aarch64-apple-darwin23") and the lockfile step fails; brew installed them.
+        PKG_SYSREQS: ${{ (runner.os == 'macOS' || steps.sysreqs-install.outcome == 'success') && 'false' || 'true' }}
 
     # Fallback when setup-r-dependencies fails (most often a transient
     # binary-fetch failure under pak). This mirrors the primary step's

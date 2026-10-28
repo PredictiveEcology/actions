@@ -1,5 +1,12 @@
 # PredictiveEcology/actions (development)
 
+- **macOS dependency installs no longer stop on R's Recommended packages.**
+  When a dependency needed a newer lattice, MASS, Matrix or nlme than the one shipped
+  with R, pak looked for the Posit Package Manager binary in a folder that does not exist
+  there and failed ("Failed to download lattice"). `setup-r-deps` now updates the
+  Recommended packages with `install.packages()` first on macOS, and no longer asks pak
+  to query system packages there, which it cannot do ("Unknown OS").
+
 - **System packages on Linux are cached, and a stuck job stops instead of running for hours.**
   On some runners the Ubuntu mirror serves 40-100 kB/s, and three uncapped or
   barely capped apt rounds (spatial libraries, `setup-r`, pak's system
