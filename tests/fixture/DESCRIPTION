@@ -8,9 +8,12 @@ Description: Not a real package and not published anywhere. It exists so the
     self-test workflow has a DESCRIPTION to resolve dependencies against.
     terra is in Imports deliberately: it links GDAL/GEOS/PROJ, so it is the
     cheapest thing that fails when the geospatial system libraries are wrong.
+    Matrix is a Recommended package: on macOS it is what exercises the Posit
+    Package Manager pin in setup-r-deps.
 License: GPL-3
 Encoding: UTF-8
 Imports:
-    terra
+    terra,
+    Matrix
 Suggests:
     testthat (>= 3.0.0)
