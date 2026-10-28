@@ -194,8 +194,9 @@ runs:
             if (!missingBinaries(pin)) break
           }
           message("Recommended binaries are missing from ", latest, "; using ", pin)
-          profile <- file.path(R.home("etc"), "Rprofile.site")
-          system2("sudo", c("sed", "-i", "''", shQuote(sprintf("s#%s#%s#g", latest, pin)), shQuote(profile)))
+          ## setup-r wrote the repository into the user's .Rprofile.
+          profile <- path.expand("~/.Rprofile")
+          writeLines(sub(latest, pin, readLines(profile), fixed = TRUE), profile)
           cat(sprintf("RSPM=%s\nRENV_CONFIG_REPOS_OVERRIDE=%s\n", pin, pin),
               file = Sys.getenv("GITHUB_ENV"), append = TRUE)
           cat(readLines(profile), sep = "\n")
