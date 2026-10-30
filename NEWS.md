@@ -1,5 +1,11 @@
 # PredictiveEcology/actions (development)
 
+- **Windows dependency installs no longer stop on pak's system-requirement query.**
+  pak cannot look up system packages on Windows ("Unknown OS ... x86_64-w64-mingw32"),
+  so the lockfile step failed for any package with a dependency that lists one (LandR's
+  Windows jobs, 2026-10-30). `setup-r-deps` now turns `PKG_SYSREQS` off on every
+  platform except Linux.
+
 - **macOS dependency installs no longer stop on R's Recommended packages.**
   Since R 4.6.2, Posit Package Manager's macOS index points lattice, MASS, Matrix and
   nlme at a folder with no files, so pak failed with "Failed to download lattice" for
