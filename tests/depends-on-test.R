@@ -106,3 +106,37 @@ eq(g$lines, "A/b#1 has no checks; not waiting", "no checks: summary line")
 eq(gate_decision(c("A/b#1", "C/d#2"), c("no-checks", "pending"))$lines,
    c("waiting for C/d#2 (pending)", "A/b#1 has no checks; not waiting"), "no checks beside a pending one")
 eq(reduced_config("no-checks") != "", TRUE, "no checks but still open: reduced matrix")
+
+## Chains: the Depends-on lines of each open referenced PR are followed, deepest first.
+fake <- function(graph, open = names(graph)) {
+  calls <- character()
+  list(read = function(repo, n) {
+         calls <<- c(calls, paste0(repo, "#", n))
+         parse_depends_on(graph[[tolower(paste0(repo, "#", n))]])
+       },
+       follow = function(repo, n) tolower(paste0(repo, "#", n)) %in% open,
+       calls = function() calls)
+}
+chain <- function(f, repo = "T/t", n = "1") transitive_deps(repo, n, f$read, f$follow)$ref
+
+f <- fake(list("t/t#1" = "Depends-on: A/a#2", "a/a#2" = "Depends-on: B/b#3", "b/b#3" = ""))
+eq(chain(f), c("B/b#3", "A/a#2"), "2-level chain: deepest first")
+
+f <- fake(list("t/t#1" = "Depends-on: A/a#2\nDepends-on: B/b#3", "a/a#2" = "Depends-on: C/c#4",
+               "b/b#3" = "Depends-on: C/c#4", "c/c#4" = ""))
+eq(chain(f), c("C/c#4", "A/a#2", "B/b#3"), "diamond: each reference once")
+eq(sum(f$calls() == "C/c#4"), 1L, "diamond: shared PR read once")
+
+f <- fake(list("t/t#1" = "Depends-on: A/a#2", "a/a#2" = "Depends-on: B/b#3",
+               "b/b#3" = "Depends-on: A/a#2"))
+eq(chain(f), c("B/b#3", "A/a#2"), "cycle terminates")
+
+f <- fake(list("t/t#1" = "Depends-on: A/a#2", "a/a#2" = "Depends-on: t/T#1\nDepends-on: B/b#3",
+               "b/b#3" = ""), open = c("a/a#2", "b/b#3"))
+eq(chain(f), c("B/b#3", "A/a#2"), "reference back to the repo under test is skipped")
+
+f <- fake(list("t/t#1" = "Depends-on: A/a#2", "a/a#2" = "Depends-on: B/b#3", "b/b#3" = ""),
+          open = character())
+eq(chain(f), "A/a#2", "closed or merged intermediate PR is not followed")
+eq(f$calls(), "T/t#1", "closed or merged intermediate PR is not read")
+eq(chain(fake(list("t/t#1" = ""))), character(), "no references")
