@@ -253,31 +253,29 @@ prepare_or_install <- function(mode, repo, number) {
       } else {
         pkg <- read.dcf(file.path(dir, "DESCRIPTION"), "Package")[1]
         version <- read.dcf(file.path(dir, "DESCRIPTION"), "Version")[1]
-        ref <- paste0("local::", dir)
-        if (mode == "prepare") {
-          local_refs <- c(local_refs, ref)
-          msg <- sprintf("Depends-on: prepared %s -> %s %s (virtual bump of its head %s), for the dependency solve",
-                         d$ref, pkg, version, substr(d$sha, 1, 7))
+        local_refs <- c(local_refs, paste0("local::", dir))
+        msg <- if (mode == "prepare") {
+          sprintf("Depends-on: prepared %s -> %s %s (virtual bump of its head %s), for the dependency solve",
+                  d$ref, pkg, version, substr(d$sha, 1, 7))
         } else {
-          install_pak()
-          cat("::group::Depends-on: installing ", d$ref, "\n", sep = "")
-          pak::pkg_install(ref, upgrade = TRUE, ask = FALSE)
-          cat("::endgroup::\n")
-          msg <- sprintf("Depends-on: installed %s -> %s %s (sha %s)", d$ref, pkg, version,
-                         substr(d$sha, 1, 7))
+          sprintf("Depends-on: installed %s -> %s %s (sha %s)", d$ref, pkg, version,
+                  substr(d$sha, 1, 7))
         }
       }
     }
-    message(msg)
     summary_lines <- c(summary_lines, paste0("- ", msg))
   }
-  if (mode == "prepare") {
-    set_output("extra-packages", paste(c(extra, local_refs), collapse = "\n"))
-    if (length(local_refs) && Sys.getenv("INPUT_PREINSTALL") == "true") {
-      install_pak()
-      pak::pkg_install(local_refs, upgrade = TRUE, ask = FALSE)
-    }
+  if (mode == "prepare") set_output("extra-packages", paste(c(extra, local_refs), collapse = "\n"))
+  ## All copies in one call: a PR further up a chain needs the version of the one below
+  ## it, and pak checks that against the dependency's GitHub branch, not against a copy
+  ## installed by an earlier call.
+  if (length(local_refs) && (mode == "install" || Sys.getenv("INPUT_PREINSTALL") == "true")) {
+    install_pak()
+    cat("::group::Depends-on: installing the upstream copies\n")
+    pak::pkg_install(local_refs, upgrade = TRUE, ask = FALSE)
+    cat("::endgroup::\n")
   }
+  message(paste(summary_lines[-1], collapse = "\n"))
   add_summary(summary_lines)
   invisible()
 }

@@ -1,5 +1,11 @@
 # PredictiveEcology/actions (development)
 
+- **Upstream PRs are installed together, so a chain installs.**
+  Installing them one at a time still failed for a chain: pak checked the version the
+  upper PR asks for against the lower package's GitHub branch, not the copy installed a
+  step before. `install` mode now passes every copy to one `pak::pkg_install()` call,
+  as `prepare` with `preinstall` already did.
+
 - **`Depends-on:` lines are followed down a chain.**
   A PR that depends on a PR which itself depends on a third failed because only the
   first link was installed (fireSense_summary#32 -> fireSenseUtils#205 -> SpaDES.core#515).
