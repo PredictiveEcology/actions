@@ -55,7 +55,7 @@ changes.
 - The description is read through the API when the job runs, so edit it and re-run the job.
 - A referenced PR that is merged or closed is skipped (the log says so), so a stale line is
   harmless after the upstream merges.
-- Not transitive: list every PR the change needs.
+- Chains are followed: the lines of each open referenced PR are read too, deepest first.
 - The log and the job summary show what ran, e.g.
   `Depends-on: installed PredictiveEcology/LandR#264 -> LandR 1.2.0.9046 (sha a110a43)`.
 - Public repositories need no extra permission. A private repository needs

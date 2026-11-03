@@ -25,7 +25,9 @@ colon. Nothing else in the description triggers anything.
   stacked on another PR of the same repository is branched from it and carries
   `Depends-on: owner/samerepo#N`; the parent's commits are already in the branch
   under test, so nothing is installed.
-- Resolution is not transitive: list every PR the change needs.
+- Chains are followed: the `Depends-on:` lines of each open referenced PR are read
+  too, and the deepest PR is installed first. Merged and closed PRs are not followed.
+  Each PR is listed once, and cycles stop.
 - The log and the job summary show what was installed, e.g.
   `Depends-on: installed PredictiveEcology/LandR#264 -> LandR 1.2.0.9046 (sha a110a43)`.
 

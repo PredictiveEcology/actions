@@ -12,7 +12,8 @@
 ## tests/depends-on-test.R can source this file; `main()` runs only when the file
 ## is run as a script.
 
-## One line, anywhere in the body: `Depends-on: owner/repo#123`.
+## One line, anywhere in the body: `Depends-on: owner/repo#123`. The lines of each
+## open referenced PR are followed too.
 depends_on_pattern <-
   "^\\s*Depends-on:\\s*([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)#([0-9]+)\\s*$"
 
@@ -147,6 +148,36 @@ read_deps <- function(repo, number) {
   parse_depends_on(body)
 }
 
+## The references of repo#number and, below each open one, the references of that PR,
+## as a data.frame like parse_depends_on(). Deepest dependency first, so each PR is
+## installed after what it needs; every reference once, whatever the case. `read(repo,
+## number)` gives the direct references and `follow(repo, number)` says whether to look
+## below one. Pure, so tests/depends-on-test.R runs it with fakes.
+transitive_deps <- function(repo, number, read, follow) {
+  seen <- tolower(paste0(repo, "#", number))
+  out <- parse_depends_on("")
+  visit <- function(deps) {
+    for (i in seq_len(nrow(deps))) {
+      key <- tolower(deps$ref[i])
+      if (key %in% seen) next
+      seen <<- c(seen, key)
+      if (follow(deps$repo[i], deps$number[i])) visit(read(deps$repo[i], deps$number[i]))
+      out <<- rbind(out, deps[i, , drop = FALSE])
+    }
+  }
+  visit(read(repo, number))
+  rownames(out) <- NULL
+  out
+}
+
+## The Depends-on references of the PR under test, with the chains behind them.
+## Merged and closed PRs are on their target branch already, and a reference back to
+## `repo` is already in the branch under test, so neither is followed.
+read_deps_chain <- function(repo, number) {
+  transitive_deps(repo, number, read_deps,
+                  function(dep_repo, n) resolve_dep(dep_repo, n, repo)$status == "open")
+}
+
 ## One referenced PR: status is same-repo, closed, merged or open, plus its head.
 resolve_dep <- function(dep_repo, number, repo) {
   if (is_same_repo(dep_repo, repo)) return(list(status = "same-repo", sha = ""))
@@ -204,7 +235,7 @@ resolve_all <- function(deps, repo) {
 
 prepare_or_install <- function(mode, repo, number) {
   extra <- Sys.getenv("INPUT_EXTRA_PACKAGES")
-  deps <- read_deps(repo, number)
+  deps <- read_deps_chain(repo, number)
   if (nrow(deps) == 0) {
     message("Depends-on: no lines in the description; nothing to do.")
     if (mode == "prepare") set_output("extra-packages", extra)
@@ -270,7 +301,7 @@ upstream_states <- function(deps, repo) {
 ## Fails open: an API error must not hold up a PR, so it warns and says ready.
 run_gate <- function(repo, number) {
   ready <- tryCatch({
-    deps <- read_deps(repo, number)
+    deps <- read_deps_chain(repo, number)
     if (nrow(deps) == 0) {
       TRUE
     } else {
@@ -298,7 +329,7 @@ run_rerun <- function(repo) {
                          ".[] | [.number, .head.sha] | @tsv", paginate = TRUE), "\t")
   summary_lines <- "### Depends-on re-run"
   for (pr in prs) {
-    deps <- read_deps(repo, pr[1])
+    deps <- read_deps_chain(repo, pr[1])
     if (nrow(deps) == 0) next
     runs <- strsplit(gh_api(sprintf("repos/%s/actions/runs?head_sha=%s&event=pull_request&per_page=100",
                                     repo, pr[2]),

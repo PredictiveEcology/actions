@@ -1,5 +1,11 @@
 # PredictiveEcology/actions (development)
 
+- **`Depends-on:` lines are followed down a chain.**
+  A PR that depends on a PR which itself depends on a third failed because only the
+  first link was installed (fireSense_summary#32 -> fireSenseUtils#205 -> SpaDES.core#515).
+  `install-depends-on` now reads the lines of each open referenced PR too, installs the
+  deepest first, and the gate waits on all of them.
+
 - **Windows dependency installs no longer stop on pak's system-requirement query.**
   pak cannot look up system packages on Windows ("Unknown OS ... x86_64-w64-mingw32"),
   so the lockfile step failed for any package with a dependency that lists one (LandR's
