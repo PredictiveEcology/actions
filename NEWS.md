@@ -1,5 +1,12 @@
 # PredictiveEcology/actions (development)
 
+- **`render-module-rmd.yaml` commits only `<module>.md`, no longer `<module>.html`.**
+  The `.md` (GitHub-flavoured markdown, from `keep_md: yes`) is what a module repository
+  shows; nothing used the committed `.html`. A repository that ignores `*.html`
+  (canClimateData) failed at `git add` on every push, so its `.md` was never updated
+  either. The render job now uploads only the `.md`, and fails if the `.Rmd` does not
+  keep one. Callers that track `<module>.html` should stop tracking and ignore it.
+
 - **Upstream PRs are installed together, so a chain installs.**
   Installing them one at a time still failed for a chain: pak checked the version the
   upper PR asks for against the lower package's GitHub branch, not the copy installed a
