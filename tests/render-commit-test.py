@@ -30,12 +30,19 @@ def check(cond, what):
 
 
 with open(WF) as f:
-    steps = yaml.safe_load(f)["jobs"]["commit"]["steps"]
+    jobs = yaml.safe_load(f)["jobs"]
+steps = jobs["commit"]["steps"]
 download = next(s for s in steps
                 if str(s.get("uses", "")).startswith("actions/download-artifact"))
 step = next(s for s in steps if s.get("name") == "Commit results")
 check(set(step["env"]) <= {"GH_TOKEN", "MODULE", "MODULE_DIR"} and "${{" not in step["run"],
       "the step needs only the inputs this test supplies")
+upload = next(s for s in jobs["render"]["steps"]
+              if str(s.get("uses", "")).startswith("actions/upload-artifact"))
+check(upload["with"]["path"].strip().splitlines() == ["${{ inputs.module-dir || '.' }}/"
+                                                      "${{ inputs.module }}.md"]
+      and upload["with"]["if-no-files-found"] == "error",
+      "the render uploads only the module's .md, and fails without one")
 
 T = tempfile.mkdtemp()
 atexit.register(shutil.rmtree, T, True)
@@ -76,13 +83,11 @@ def checkout(name):
 
 
 def render(module, version, date, text, d=""):
-    """A module's rendered .md and .html, keyed by their paths in the repository."""
+    """A module's rendered .md, keyed by its path in the repository."""
     v = (module, version, date, text)
     p = os.path.join(d, module)
     return {p + ".md": '---\ntitle: "%s"\nsubtitle: "v.%s"\ndate: "Last updated: %s"\n'
-                       '---\n\n%s\n' % v,
-            p + ".html": '<h1 class="title">%s</h1>\n<h3 class="subtitle">v.%s</h3>\n'
-                         '<h4 class="date">Last updated: %s</h4>\n<p>%s</p>\n' % v}
+                       '---\n\n%s\n' % v}
 
 
 def run_step(job, module, module_dir, files):
@@ -166,3 +171,11 @@ os.remove(hook)
 tip = git(remote, "rev-parse", BRANCH)
 check(run_step(checkout("same-run"), M, "", latest) and git(remote, "rev-parse", BRANCH) == tip,
       "an unchanged render makes no commit")
+
+# 5. Only the .md is committed: an .html left beside it in the download stays off the branch.
+md_only = render(M, "1.0.2", "2026-10-16", "Three parameters.")
+check(run_step(checkout("md-run"), M, "", dict(md_only, **{M + ".html": "<p>Three.</p>\n"}))
+      and on_branch(md_only)
+      and not any(p.endswith(".html")
+                  for p in git(remote, "ls-tree", "-r", "--name-only", BRANCH).split()),
+      "the step commits the .md and no .html")

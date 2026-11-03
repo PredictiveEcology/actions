@@ -130,7 +130,7 @@ file's header comment for its inputs.
 | `pkgdown.yaml` | build the site and deploy to `gh-pages` |
 | `revdeps.yaml` | reverse dependency checks (wraps `revdeps-check`) |
 | `citation.yaml` | regenerate `CITATION.cff` from `DESCRIPTION` |
-| `render-module-rmd.yaml` | render a SpaDES module's `.Rmd` and commit the result |
+| `render-module-rmd.yaml` | render a SpaDES module's `.Rmd` and commit the rendered `.md` |
 | `testthat-module.yaml` | run a SpaDES module's `testthat` suite |
 | `pkgdown-module.yaml` | build a SpaDES module's pkgdown site and deploy it to `gh-pages` |
 | `depends-on-rerun.yaml` | opt-in, scheduled: re-run PR runs the `Depends-on` gate skipped, once the upstream is ready |
