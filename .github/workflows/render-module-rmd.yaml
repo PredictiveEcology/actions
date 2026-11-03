@@ -242,7 +242,7 @@ jobs:
       ## (GitHub-flavoured markdown) beside the .html, and that .md is what the repo
       ## shows: its README.md symlinks to it. The .html is not committed. A module whose
       ## .Rmd does not keep the .md fails here, as it has nothing to commit.
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v7
         with:
           name: module-md-${{ inputs.module }}
           path: ${{ inputs.module-dir || '.' }}/${{ inputs.module }}.md
