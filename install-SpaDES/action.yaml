@@ -11,12 +11,22 @@ runs:
   steps:
       - name: Install SpaDES packages
         run: |
-          cat("::group::Installing SpaDES metapackage \n")
+          ## What the SpaDES metapackage pulled in, named directly. CRAN archived the
+          ## metapackage on 2026-07-13, so installing it meant a source build from the
+          ## CRAN archive on every run.
+          cat("::group::Installing SpaDES packages from CRAN \n")
           Require::setLinuxBinaryRepo()
-          Require::Require("SpaDES", require = FALSE, upgrade = as.logical("${{ inputs.upgrade }}"))
+          Require::Require(c("quickPlot", "reproducible", "SpaDES.core", "SpaDES.tools"),
+            require = FALSE, upgrade = as.logical("${{ inputs.upgrade }}"))
           cat("::endgroup::\n")
-          cat("::group::Installing additional SpaDES packages from GitHub \n")
-          Require::Require("PredictiveEcology/SpaDES.experiment@development",
+          ## The module workflows use development reproducible and SpaDES.core
+          ## (pkgdown-module needs SpaDES.core::moduleRmdToVignette()). They came from
+          ## the Remotes of SpaDES.experiment, which is deprecated and archived and no
+          ## longer builds. `(HEAD)` installs the branch even when its Version equals
+          ## the installed one.
+          cat("::group::Installing development reproducible and SpaDES.core from GitHub \n")
+          Require::Require(c("PredictiveEcology/reproducible@development (HEAD)",
+                             "PredictiveEcology/SpaDES.core@development (HEAD)"),
             require = FALSE, upgrade = as.logical("${{ inputs.upgrade }}"))
           cat("::endgroup::\n")
         shell: Rscript {0}

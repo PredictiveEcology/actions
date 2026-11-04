@@ -1,5 +1,18 @@
 # PredictiveEcology/actions (development)
 
+- **`install-SpaDES` no longer installs SpaDES.experiment or the `SpaDES` metapackage.**
+  SpaDES.experiment is deprecated (in favour of SpaDES.project) and archived, and its build
+  failed on every run. Before failing, pak had installed its `Remotes:` (development
+  reproducible and SpaDES.core) and its Imports (DEoptim, future, purrr, raster, sp,
+  googledrive, ...). The action now names `reproducible@development (HEAD)` and
+  `SpaDES.core@development (HEAD)` directly, so the module workflows keep the development
+  versions. The Imports are no longer installed: a module that uses one of them must list
+  it in `reqdPkgs`. That includes googledrive for any module that downloads from Google
+  Drive, even through `prepInputs()` or a LandR helper, since reproducible and LandR have
+  it only in Suggests. CRAN archived the metapackage on 2026-07-13, and each run built it
+  from the CRAN archive; the action now installs what it pulled in (quickPlot,
+  reproducible, SpaDES.core, SpaDES.tools) from CRAN.
+
 - **`render-module-rmd.yaml` commits only `<module>.md`, no longer `<module>.html`.**
   The `.md` (GitHub-flavoured markdown, from `keep_md: yes`) is what a module repository
   shows; nothing used the committed `.html`. A repository that ignores `*.html`
