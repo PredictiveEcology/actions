@@ -7,7 +7,9 @@
   googledrive, ...). The action now names `reproducible@development (HEAD)` and
   `SpaDES.core@development (HEAD)` directly, so the module workflows keep the development
   versions. The Imports are no longer installed: a module that uses one of them must list
-  it in `reqdPkgs`. CRAN archived the metapackage on 2026-07-13, and each run built it
+  it in `reqdPkgs`. That includes googledrive for any module that downloads from Google
+  Drive, even through `prepInputs()` or a LandR helper, since reproducible and LandR have
+  it only in Suggests. CRAN archived the metapackage on 2026-07-13, and each run built it
   from the CRAN archive; the action now installs what it pulled in (quickPlot,
   reproducible, SpaDES.core, SpaDES.tools) from CRAN.
 
