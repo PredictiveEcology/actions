@@ -1,9 +1,10 @@
 # install-SpaDES
 
-This action installs SpaDES packages from CRAN, via the `SpaDES` metapackage.
-It also installs SpaDES packages not currently on CRAN, notably:
+This action installs quickPlot, reproducible, SpaDES.core and SpaDES.tools from CRAN
+(what the archived `SpaDES` metapackage pulled in), then the development branches of:
 
-- `PredictiveEcology/SpaDES.experiment@development`
+- `PredictiveEcology/reproducible@development`
+- `PredictiveEcology/SpaDES.core@development`
 
 Note that this action requires the packages `remotes` and `Require` to be installed,
 which can be done via the [`install-Require`](https://github.com/PredictiveEcology/actions/tree/main/install-Require)
