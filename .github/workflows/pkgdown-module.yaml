@@ -178,7 +178,7 @@ jobs:
       ## template renders with.
       - uses: PredictiveEcology/actions/install-Require@main
 
-      - uses: PredictiveEcology/actions/install-SpaDES@fix/install-spades-drop-experiment
+      - uses: PredictiveEcology/actions/install-SpaDES@main
 
       - uses: PredictiveEcology/actions/install-Rmd-pkgs@main
 

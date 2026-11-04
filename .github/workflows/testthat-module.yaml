@@ -192,7 +192,7 @@ jobs:
       ## so Require has to exist first.
       - uses: PredictiveEcology/actions/install-Require@main
 
-      - uses: PredictiveEcology/actions/install-SpaDES@fix/install-spades-drop-experiment
+      - uses: PredictiveEcology/actions/install-SpaDES@main
 
 
       ## The test toolchain is only in SpaDES.core's Suggests, so install-SpaDES does
