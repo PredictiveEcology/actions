@@ -152,16 +152,21 @@ read_deps <- function(repo, number) {
 ## as a data.frame like parse_depends_on(). Deepest dependency first, so each PR is
 ## installed after what it needs; every reference once, whatever the case. `read(repo,
 ## number)` gives the direct references and `follow(repo, number)` says whether to look
-## below one. Pure, so tests/depends-on-test.R runs it with fakes.
+## below one. An upstream PR stacked on another PR of its own repository already carries
+## that PR's commits, so the one below is followed for its references but not listed:
+## two copies of one package cannot be installed together. Pure, so
+## tests/depends-on-test.R runs it with fakes.
 transitive_deps <- function(repo, number, read, follow) {
   seen <- tolower(paste0(repo, "#", number))
   out <- parse_depends_on("")
-  visit <- function(deps) {
+  visit <- function(deps, parent = NULL) {
     for (i in seq_len(nrow(deps))) {
       key <- tolower(deps$ref[i])
       if (key %in% seen) next
       seen <<- c(seen, key)
-      if (follow(deps$repo[i], deps$number[i])) visit(read(deps$repo[i], deps$number[i]))
+      if (follow(deps$repo[i], deps$number[i]))
+        visit(read(deps$repo[i], deps$number[i]), deps$repo[i])
+      if (!is.null(parent) && is_same_repo(deps$repo[i], parent)) next
       out <<- rbind(out, deps[i, , drop = FALSE])
     }
   }
