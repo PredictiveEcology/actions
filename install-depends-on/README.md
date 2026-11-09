@@ -24,7 +24,9 @@ colon. Nothing else in the description triggers anything.
 - A reference to the repository the PR is in is skipped, with a log line. A PR
   stacked on another PR of the same repository is branched from it and carries
   `Depends-on: owner/samerepo#N`; the parent's commits are already in the branch
-  under test, so nothing is installed.
+  under test, so nothing is installed. The same holds further up a chain: when an
+  upstream PR is stacked on another PR of its own repository, only the top one is
+  installed, and the lower one's `Depends-on:` lines are still followed.
 - Chains are followed: the `Depends-on:` lines of each open referenced PR are read
   too, and the deepest PR is installed first. Merged and closed PRs are not followed.
   Each PR is listed once, and cycles stop.

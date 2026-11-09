@@ -140,3 +140,9 @@ f <- fake(list("t/t#1" = "Depends-on: A/a#2", "a/a#2" = "Depends-on: B/b#3", "b/
 eq(chain(f), "A/a#2", "closed or merged intermediate PR is not followed")
 eq(f$calls(), "T/t#1", "closed or merged intermediate PR is not read")
 eq(chain(fake(list("t/t#1" = ""))), character(), "no references")
+
+## SpaDES.project#222 -> SpaDES.core#520 -> SpaDES.core#518: #520 is branched from #518,
+## so only #520 is installed; #518's own references are still followed.
+f <- fake(list("t/t#1" = "Depends-on: A/a#3", "a/a#3" = "Depends-on: A/a#2",
+               "a/a#2" = "Depends-on: B/b#4", "b/b#4" = ""))
+eq(chain(f), c("B/b#4", "A/a#3"), "upstream stacked on its own repo: one copy, deps kept")
