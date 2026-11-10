@@ -9,8 +9,11 @@
   Drive; the action prints a notice saying so.
 
 - **`testthat-module.yaml` takes an optional `GOOGLEDRIVE_AUTH` secret.**
-  Module tests that read Drive inputs can now authenticate. The secret is staged after
-  every install step and reaches only the test and coverage steps, as in `R-CMD-check`.
+  Module tests that read Drive inputs are now logged in automatically, with no auth code
+  in the module: the workflow adds a login helper to `tests/testthat/` in the runner's
+  checkout (never committed), which both the test run and the coverage run load. The
+  secret is staged after every install step and reaches only those two steps. A
+  credential that does not work fails the test run.
 
 - **`install-SpaDES` no longer installs SpaDES.experiment or the `SpaDES` metapackage.**
   SpaDES.experiment is deprecated (in favour of SpaDES.project) and archived, and its build

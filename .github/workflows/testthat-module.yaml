@@ -282,6 +282,43 @@ jobs:
           credential: ${{ secrets.GOOGLEDRIVE_AUTH }}
           present: ${{ secrets.GOOGLEDRIVE_AUTH != '' }}
 
+      ## Log in to Drive automatically, so module tests need no auth code. Both
+      ## test runs below (test_local() here, and covr's separate --vanilla R
+      ## process in moduleCoverage()) copy tests/testthat/ and source every
+      ## helper-*.R in it first, so a helper file is the one place that reaches
+      ## both. It goes into this throwaway checkout only; nothing is committed.
+      ## A credential that was staged but does not work stops the test run.
+      - name: Add Google Drive login helper
+        if: ${{ steps.gdrive-auth.outputs.token-path != '' || steps.gdrive-auth.outputs.sa-path != '' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          f="${MODULE_DIR:-.}/tests/testthat/helper-000-ci-gdrive-login.R"
+          if [ -e "$f" ]; then echo "::error::$f already exists"; exit 1; fi
+          cat > "$f" <<'RHELPER'
+          ## Written by PredictiveEcology/actions testthat-module.yaml; not in the repository.
+          local({
+            sa <- Sys.getenv("GOOGLEDRIVE_AUTH"); tp <- Sys.getenv("GDRIVE_OAUTH_TOKEN")
+            if (!nzchar(sa) && !nzchar(tp)) return(invisible())
+            if (!requireNamespace("googledrive", quietly = TRUE))
+              stop("A Google Drive credential was passed, but googledrive is not installed; ",
+                   "add it to the module's reqdPkgs.")
+            if (googledrive::drive_has_token()) return(invisible())
+            if (nzchar(sa)) {
+              googledrive::drive_auth(path = sa)
+            } else {
+              tok <- readRDS(tp)
+              ## drive_auth() writes a refreshed token back to the token's
+              ## cache_path, the folder it was minted in; on a runner that fails
+              ## and is reported as "Can't get Google credentials".
+              tok$cache_path <- NULL
+              googledrive::drive_auth(token = tok)
+            }
+            message("Google Drive: logged in as ", googledrive::drive_user()$emailAddress)
+          })
+          RHELPER
+          echo "Added $f"
+
       - name: Run tests
         if: ${{ steps.has_tests.outputs.found == 'true' }}
         shell: Rscript {0}
