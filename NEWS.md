@@ -1,5 +1,20 @@
 # PredictiveEcology/actions (development)
 
+- **Service-account keys are accepted again for Google Drive.**
+  `stage-gdrive-auth` staged only user OAuth tokens and failed the step on a
+  service-account key. It now stages either: a token as `token-path`
+  (`GDRIVE_OAUTH_TOKEN`), a key as `sa-path` (`GOOGLEDRIVE_AUTH`), and accepts a key as
+  raw JSON as well as base64. `R-CMD-check` and `test-coverage` pass both env vars to
+  the tests. A service account still cannot upload into a folder in a person's My
+  Drive; the action prints a notice saying so.
+
+- **`testthat-module.yaml` takes an optional `GOOGLEDRIVE_AUTH` secret.**
+  Module tests that read Drive inputs are now logged in automatically, with no auth code
+  in the module: the workflow adds a login helper to `tests/testthat/` in the runner's
+  checkout (never committed), which both the test run and the coverage run load. The
+  secret is staged after every install step and reaches only those two steps. A
+  credential that does not work fails the test run.
+
 - **`install-SpaDES` no longer installs SpaDES.experiment or the `SpaDES` metapackage.**
   SpaDES.experiment is deprecated (in favour of SpaDES.project) and archived, and its build
   failed on every run. Before failing, pak had installed its `Remotes:` (development

@@ -198,7 +198,7 @@ What each workflow does regardless of inputs.
 | Uses `setup-r-deps` | ✅ yes | ⚠️ no | ⚠️ no | ⚠️ no | ⚠️ no | ✅ yes | – | – | – | ⚠️ no |
 | Cancels superseded PR runs | ✅ yes | ✅ yes | ⚠️ no | ✅ yes | ✅ yes | ⚠️ no | ✅ yes | ✅ yes | ✅ yes | ✅ yes |
 | Dependency source | ✅ input, r-universe by default | ⚠️ r-universe, fixed | ⚠️ r-universe, fixed | ⚠️ r-universe, fixed | ✅ input, CRAN by default | ⚠️ CRAN only, fixed | – Require | – Require | – Require | ⚠️ CRAN only, fixed |
-| Accepts secrets | `GOOGLEDRIVE_AUTH` | `GOOGLEDRIVE_AUTH`, `CODECOV_TOKEN` | &ndash; | `GOOGLEDRIVE_AUTH` | &ndash; | &ndash; | &ndash; | &ndash; | &ndash; | &ndash; |
+| Accepts secrets | `GOOGLEDRIVE_AUTH` | `GOOGLEDRIVE_AUTH`, `CODECOV_TOKEN` | &ndash; | `GOOGLEDRIVE_AUTH` | &ndash; | &ndash; | &ndash; | `GOOGLEDRIVE_AUTH` | &ndash; | &ndash; |
 | R versions tested | release | release | release | release | caller's `config` | release | caller's `r-version` | caller's `r-version` | caller's `r-version` | release |
 
 ✅ the caller can set it &nbsp;&middot;&nbsp; ⚠️ not available here, though other workflows of the same kind offer it &nbsp;&middot;&nbsp; – not applicable

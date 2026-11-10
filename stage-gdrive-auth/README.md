@@ -1,12 +1,9 @@
 # stage-gdrive-auth
 
-Decodes a `GOOGLEDRIVE_AUTH` secret holding a **user OAuth token** onto the
-runner and reports its path as a step output. Does nothing and never fails when
-the secret is absent — the normal case on fork PRs, where GitHub withholds
-secrets.
-
-Service-account keys are **rejected**, and that rejection fails the step. See
-[Why not a service account](#why-not-a-service-account).
+Decodes a `GOOGLEDRIVE_AUTH` secret onto the runner and reports its path as a
+step output. The secret can be a **user OAuth token** or a **service-account
+key**; each gets its own output. Does nothing and never fails when the secret
+is absent — the normal case on fork PRs, where GitHub withholds secrets.
 
 ## Usage
 
@@ -25,18 +22,25 @@ job-level `env:`.
 - uses: r-lib/actions/check-r-package@v2
   env:
     GDRIVE_OAUTH_TOKEN: ${{ steps.gdrive-auth.outputs.token-path }}
+    GOOGLEDRIVE_AUTH: ${{ steps.gdrive-auth.outputs.sa-path }}
 ```
 
-`GDRIVE_OAUTH_TOKEN` is the env var the R side reads; it is a path to a
-serialized token, handed to `googledrive::drive_auth(token = readRDS(f))`.
-Empty means the R side sees an unset var and skips, exactly as it does locally.
+At most one output is non-empty:
 
-`GOOGLEDRIVE_AUTH` is deliberately not exported to the check step: that was the
-service-account path.
+| Secret holds | Output | Env var for R | R call |
+|---|---|---|---|
+| user OAuth token | `token-path` | `GDRIVE_OAUTH_TOKEN` | `drive_auth(token = readRDS(f))` |
+| service-account key | `sa-path` | `GOOGLEDRIVE_AUTH` | `drive_auth(path = f)` |
+
+Both are paths to a file, never the secret itself. Both empty means the R side
+sees unset vars and skips, exactly as it does locally. Before using a token, set
+`tok$cache_path <- NULL`, or `drive_auth()` tries to write the refreshed token
+to the folder it was minted in, fails on the runner, and reports that as no
+credential.
 
 ## Storing the secret
 
-Mint a token and store it base64-encoded:
+A user OAuth token is binary, so it must be base64-encoded:
 
 ```r
 saveRDS(googledrive::drive_token(), "gdrive-token.rds")
@@ -46,22 +50,20 @@ saveRDS(googledrive::drive_token(), "gdrive-token.rds")
 base64 -w0 gdrive-token.rds   # paste the output as the GOOGLEDRIVE_AUTH secret
 ```
 
-Base64 is required, not preferred. The token is binary, and a multi-line raw
-value arrives **empty** on Windows runners because PowerShell cannot set env
-vars containing newlines.
+A service-account key can be stored as base64 or as the raw JSON. Raw JSON is
+multi-line, and a multi-line value arrives **empty** on Windows runners because
+PowerShell cannot set env vars containing newlines, so use base64 for any
+workflow that runs on Windows.
 
 `present` is passed separately because a single-line boolean always survives the
 env boundary. It is what separates "no secret configured" (quiet) from "secret
 configured but dropped in transit" (warned).
 
-## Why not a service account
+## Which credential to use
 
-A service account has no Drive quota on user-owned folders. It authenticates
-cleanly and then cannot complete an upload round-trip, so upload-backed tests
-report zero coverage while the job stays green. That failure went undiagnosed
-for months, and under `covr` it is worse — covr neither fails the build on a
-test failure nor prints a skip summary, so even a test written to fail loudly is
-silent.
-
-Rejecting the credential outright, with a failed step, is the only signal that
-cannot be mistaken for "no credential configured".
+A service account can read files shared with it, and can upload to a Shared
+Drive. It cannot upload into a folder in a person's My Drive: the new file would
+belong to the service account, which has no storage quota, and Drive answers
+`403 storageQuotaExceeded`. So tests that upload into a personal folder need a
+user OAuth token. Tests that only download, or that upload to a Shared Drive,
+can use either.
