@@ -273,11 +273,8 @@ jobs:
           - {name: "dropped secret", kind: "none",  present: "true",  expect: "neither"}
           - {name: "R token (b64)",  kind: "token", present: "true",  expect: "token"}
           - {name: "undecodable",    kind: "junk",  present: "true",  expect: "neither"}
-          ## A service-account key must be REFUSED, loudly. This case asserts
-          ## the action fails the step rather than staging it or skipping --
-          ## the regression it guards is a silent downgrade back to "green but
-          ## uploads nothing".
-          - {name: "service account", kind: "sa",   present: "true",  expect: "rejected"}
+          - {name: "service account (b64)", kind: "sa",     present: "true", expect: "sa"}
+          - {name: "service account (raw)", kind: "sa-raw", present: "true", expect: "sa"}
     steps:
       - uses: actions/checkout@v7
 
@@ -294,14 +291,14 @@ jobs:
           case "${{ matrix.case.kind }}" in
             none)  value="" ;;
             sa)    value="$(printf '%s' "$sa" | base64 -w0)" ;;
+            sa-raw) value="$sa" ;;
             token) value="$(printf 'fixture' | gzip -c | base64 -w0)" ;;
             junk)  value="$(printf 'not a credential at all' | base64 -w0)" ;;
           esac
           echo "value=$value" >> "$GITHUB_OUTPUT"
 
       - id: stage
-        ## A rejected service account fails the step by design, so this must not
-        ## abort the job before the assertion below can check that it did.
+        ## Never expected to fail; continue so the assertion below reports it.
         continue-on-error: true
         uses: ./stage-gdrive-auth
         with:
@@ -312,14 +309,17 @@ jobs:
         shell: bash
         env:
           TOKEN: ${{ steps.stage.outputs.token-path }}
+          SA: ${{ steps.stage.outputs.sa-path }}
           OUTCOME: ${{ steps.stage.outcome }}
           EXPECT: ${{ matrix.case.expect }}
         run: |
           set -euo pipefail
           got="neither"
           [ -n "${TOKEN:-}" ]        && got="token"
-          [ "$OUTCOME" = "failure" ] && got="rejected"
-          echo "expected=$EXPECT got=$got  (outcome=$OUTCOME token='${TOKEN:-}')"
+          [ -n "${SA:-}" ]           && got="sa"
+          [ -n "${TOKEN:-}" ] && [ -n "${SA:-}" ] && got="both"
+          [ "$OUTCOME" = "failure" ] && got="failed"
+          echo "expected=$EXPECT got=$got  (outcome=$OUTCOME token='${TOKEN:-}' sa='${SA:-}')"
           if [ "$got" != "$EXPECT" ]; then
             echo "::error::stage-gdrive-auth returned '$got', expected '$EXPECT'"
             exit 1
@@ -328,6 +328,9 @@ jobs:
           ## pointing at nothing would let the R side fail far from the cause.
           if [ "$got" = "token" ] && [ ! -s "$TOKEN" ]; then
             echo "::error::token-path was set but points at nothing"; exit 1
+          fi
+          if [ "$got" = "sa" ] && [ ! -s "$SA" ]; then
+            echo "::error::sa-path was set but points at nothing"; exit 1
           fi
           echo "OK"
 

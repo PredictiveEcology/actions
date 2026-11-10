@@ -11,6 +11,10 @@
 ##       uses: PredictiveEcology/actions/.github/workflows/testthat-module.yaml@main
 ##       with:
 ##         module: myModule
+##       ## Only if the tests read from Google Drive. Name the secret you pass;
+##       ## the caller's own secret may have any name.
+##       secrets:
+##         GOOGLEDRIVE_AUTH: ${{ secrets.GOOGLEDRIVE_AUTH }}
 ##
 ## This is `render-module-rmd.yaml` with the render and commit jobs replaced by a
 ## test run; everything above them -- spatial system deps, the apt retry wrapper,
@@ -88,6 +92,18 @@ on:
         required: false
         type: boolean
         default: true
+    secrets:
+      GOOGLEDRIVE_AUTH:
+        description: >-
+          Google Drive credential: a base64-encoded serialized R user OAuth
+          token (saveRDS of a gargle/httr token), or a service-account key as
+          base64 or raw JSON. A service account cannot upload into a folder in
+          a person's My Drive (it has no storage quota); it can read, and can
+          upload to a Shared Drive. Optional -- without it the tests get no
+          Drive credential. The tests receive its PATH, never the secret: a
+          token in GDRIVE_OAUTH_TOKEN (drive_auth(token = readRDS(.))) or a
+          key in GOOGLEDRIVE_AUTH (drive_auth(path = .)).
+        required: false
 
 ## See render-module-rmd.yaml (#33): inside a called workflow `github.workflow`
 ## resolves to the CALLER's name, so without the `-reusable` suffix this key can
@@ -256,9 +272,24 @@ jobs:
       ## parsed into a simList and a test cannot call one directly; converting puts
       ## them in a real namespace. `destinationPath` keeps the module itself untouched
       ## -- the conversion is not reversible.
+      ## Staged here, after every install step: those run third-party code and none
+      ## of it needs this credential. Only the two steps that run tests receive it.
+      - name: Stage Google Drive credentials
+        id: gdrive-auth
+        if: ${{ steps.has_tests.outputs.found == 'true' }}
+        uses: PredictiveEcology/actions/stage-gdrive-auth@main
+        with:
+          credential: ${{ secrets.GOOGLEDRIVE_AUTH }}
+          present: ${{ secrets.GOOGLEDRIVE_AUTH != '' }}
+
       - name: Run tests
         if: ${{ steps.has_tests.outputs.found == 'true' }}
         shell: Rscript {0}
+        env:
+          # At most one is non-empty, depending on which credential type the
+          # secret held. Both empty -> no credential, as locally.
+          GDRIVE_OAUTH_TOKEN: ${{ steps.gdrive-auth.outputs.token-path }}
+          GOOGLEDRIVE_AUTH: ${{ steps.gdrive-auth.outputs.sa-path }}
         run: |
           m <- Sys.getenv("MODULE")
           md <- Sys.getenv("MODULE_DIR"); mp <- if (nzchar(md)) dirname(md) else ".."
@@ -286,6 +317,10 @@ jobs:
       - name: Coverage summary
         if: ${{ inputs.coverage && steps.has_tests.outputs.found == 'true' }}
         shell: Rscript {0}
+        ## moduleCoverage() runs the tests again, so it needs the same credential.
+        env:
+          GDRIVE_OAUTH_TOKEN: ${{ steps.gdrive-auth.outputs.token-path }}
+          GOOGLEDRIVE_AUTH: ${{ steps.gdrive-auth.outputs.sa-path }}
         run: |
           m <- Sys.getenv("MODULE")
           md <- Sys.getenv("MODULE_DIR"); mp <- if (nzchar(md)) dirname(md) else ".."
