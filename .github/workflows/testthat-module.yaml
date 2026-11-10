@@ -300,9 +300,7 @@ jobs:
           local({
             sa <- Sys.getenv("GOOGLEDRIVE_AUTH"); tp <- Sys.getenv("GDRIVE_OAUTH_TOKEN")
             if (!nzchar(sa) && !nzchar(tp)) return(invisible())
-            if (!requireNamespace("googledrive", quietly = TRUE))
-              stop("A Google Drive credential was passed, but googledrive is not installed; ",
-                   "add it to the module's reqdPkgs.")
+            Require::Require("googledrive")
             if (googledrive::drive_has_token()) return(invisible())
             if (nzchar(sa)) {
               googledrive::drive_auth(path = sa)
