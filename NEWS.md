@@ -1,5 +1,10 @@
 # PredictiveEcology/actions (development)
 
+- **`test-downstream.yaml` now stages the Google Drive secret before the check.**
+  It put the raw secret into `GOOGLEDRIVE_AUTH`, where the downstream package's tests
+  expect a file path, so they could not log in. It now runs `stage-gdrive-auth` and
+  passes `GDRIVE_OAUTH_TOKEN` and `GOOGLEDRIVE_AUTH` as `R-CMD-check` does.
+
 - **Service-account keys are accepted again for Google Drive.**
   `stage-gdrive-auth` staged only user OAuth tokens and failed the step on a
   service-account key. It now stages either: a token as `token-path`
