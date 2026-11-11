@@ -259,10 +259,23 @@ jobs:
                  " but the checkout under test is ", local)
           cat("OK:", pkg, d$Version, "installed from the checkout under test\n")
 
+      # Staged as late as possible: every step above installs and runs
+      # third-party code, and none of it needs this credential. Only the check
+      # below receives it, as a file path, the same way R-CMD-check does.
+      - name: Stage Google Drive credentials
+        id: gdrive-auth
+        uses: PredictiveEcology/actions/stage-gdrive-auth@main
+        with:
+          credential: ${{ secrets.GOOGLEDRIVE_AUTH }}
+          present: ${{ secrets.GOOGLEDRIVE_AUTH != '' }}
+
       - name: Check ${{ matrix.downstream.repo }}
         shell: Rscript {0}
         env:
-          GOOGLEDRIVE_AUTH: ${{ secrets.GOOGLEDRIVE_AUTH }}
+          # At most one is non-empty, depending on which credential type the
+          # secret held; both are file paths.
+          GDRIVE_OAUTH_TOKEN: ${{ steps.gdrive-auth.outputs.token-path }}
+          GOOGLEDRIVE_AUTH: ${{ steps.gdrive-auth.outputs.sa-path }}
         run: |
           rcmdcheck::rcmdcheck(
             "_downstream",
