@@ -82,6 +82,12 @@ on:
         required: false
         type: string
         default: ""
+      extra-packages:
+        description: >-
+          Additional R packages, space-separated.
+        required: false
+        type: string
+        default: ""
       coverage:
         description: >-
           Write a coverage summary to the job summary. Coverage is reported here
@@ -240,11 +246,14 @@ jobs:
 
       - name: Install module package dependencies
         shell: Rscript {0}
+        env:
+          EXTRA_PACKAGES: ${{ inputs.extra-packages }}
         run: |
           m <- Sys.getenv("MODULE")
           md <- Sys.getenv("MODULE_DIR"); mp <- if (nzchar(md)) dirname(md) else ".."
           pkgs <- SpaDES.core::packages(modules = m, paths = mp)
-          Require::Require(pkgs[[1]])
+          pkgs <- c(pkgs[[1]], strsplit(Sys.getenv("EXTRA_PACKAGES"), " ")[[1]])
+          Require::Require(pkgs)
 
       ## After the dependency install on purpose, so a `Depends-on:` PR overrides it.
       - uses: PredictiveEcology/actions/install-depends-on@main
