@@ -157,7 +157,7 @@ it; the legend is under the second table.
 | `pandoc` | ✅ `true` | ✅ `true` | ⚠️ no | ⚠️ no | ⚠️ no | ⚠️ no | – | – | – | ⚠️ no |
 | `extra-env` | ✅ `""` | ✅ `""` | ⚠️ no | ⚠️ no | ⚠️ no | ⚠️ no | – | – | – | ⚠️ no |
 | `dependencies` | ✅ `"all"` | ✅ `"all"` | ⚠️ no | ✅ `"all"` | ⚠️ no | ✅ `"all"` | – | – | – | ⚠️ no |
-| `extra-packages` | ✅ `""` | ✅ `""` | ✅ `""` | ✅ `""` | ✅ `""` | ✅ `""` | – | – | – | ⚠️ no |
+| `extra-packages` | ✅ `""` | ✅ `""` | ✅ `""` | ✅ `""` | ✅ `""` | ✅ `""` | – | ✅ `""` | – | ⚠️ no |
 | `post-install` | ✅ `""` | ✅ `""` | ✅ `""` | ✅ `""` | ⚠️ no | ⚠️ no | – | – | – | ⚠️ no |
 | `extra-repositories` | ✅ `https://PredictiveEcology.r-u`… | ⚠️ no | ⚠️ no | ⚠️ no | ✅ `""` | ⚠️ no | – | – | – | ⚠️ no |
 | `extra-apt` | – | – | – | – | – | – | ✅ `""` | ✅ `""` | ✅ `""` | – |
