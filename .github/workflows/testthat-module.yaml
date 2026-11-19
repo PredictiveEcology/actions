@@ -63,11 +63,12 @@ on:
         required: false
         type: string
         default: ""
-      r-version:
-        description: "R version passed to setup-r."
-        required: false
+      extra-config:
+        description: >-
+          Extra matrix legs appended via `include`. E.g.
+          '[{"config":{"os":"windows-latest","r":"release"}}]'
         type: string
-        default: "release"
+        default: "[]"
       system-deps:
         description: >-
           Install the geospatial system libraries (GDAL/GEOS/PROJ/udunits).
@@ -142,13 +143,21 @@ jobs:
     needs: depends-on-gate
     ## A skipped gate (the default) lets the job run exactly as before.
     if: ${{ !cancelled() && needs.depends-on-gate.result != 'failure' && (needs.depends-on-gate.result == 'skipped' || needs.depends-on-gate.outputs.ready == 'true') }}
-    name: Test module
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.config.os }}
+    name: ${{ matrix.config.os }} (${{ matrix.config.r }})
+
     ## Without a cap a hung dependency install runs to GitHub's 6 h default and holds this
     ## module's concurrency group; successful runs take a median 7-9 min, at most 39 (2026-10).
     timeout-minutes: 60
     permissions:
       contents: read
+
+    strategy:
+      fail-fast: false
+      matrix:
+        config: ${{ fromJSON('[{"os":"ubuntu-latest","r":"release"}]') }}
+        include: ${{ fromJSON(inputs.extra-config) }}
+
     ## Every GitHub install here -- Require itself, then each `owner/repo@ref` in the
     ## module's reqdPkgs -- calls the GitHub API. Unauthenticated they fall back to
     ## the bundled PAT and fail on its rate limit. GITHUB_TOKEN is available to a
@@ -169,6 +178,7 @@ jobs:
       ## Same retry wrapper install-spatial-deps uses: a composite-action step cannot
       ## use `timeout-minutes`, so a stalled mirror otherwise burns the 6h job ceiling.
       - name: Install other system dependencies
+        if: runner.os == 'Linux'
         shell: bash
         env:
           DEBIAN_FRONTEND: noninteractive
@@ -200,7 +210,7 @@ jobs:
 
       - uses: r-lib/actions/setup-r@v2
         with:
-          r-version: ${{ inputs.r-version }}
+          r-version: ${{ matrix.config.r }}
           use-public-rspm: true
           Ncpus: 2
 
