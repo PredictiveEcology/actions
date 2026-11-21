@@ -31,6 +31,7 @@ on:
       - "unpin-remotes/**"
       - "install-spatial-deps/**"
       - "install-apt-packages/**"
+      - "install-module-sysdeps/**"
       - "install-Require/**"
       - "install-depends-on/**"
       - "tests/depends-on-test.R"
@@ -413,6 +414,36 @@ jobs:
             exit 0
           fi
           [ "$HIT" = "true" ] || { echo "::error::expected an apt cache hit, got '$HIT'"; exit 1; }
+
+  ## install-module-sysdeps: the one list the three module workflows share. The first step
+  ## fails if a workflow hand-writes the list again (it had drifted: #100 fixed the font
+  ## libraries in one copy only). The rest checks the libraries textshaping builds against.
+  install-module-sysdeps:
+    name: install-module-sysdeps
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - name: The module workflows use the shared action and do not carry their own list
+        shell: bash
+        run: |
+          rc=0
+          for f in testthat-module render-module-rmd pkgdown-module; do
+            w=.github/workflows/$f.yaml
+            grep -q 'actions/install-module-sysdeps@main' "$w" || { echo "::error file=$w::does not call install-module-sysdeps"; rc=1; }
+            grep -q 'libmagick++-dev\|apt-get install' "$w" && { echo "::error file=$w::hand-writes system libraries; put them in install-module-sysdeps"; rc=1; }
+          done
+          exit $rc
+      - uses: ./install-module-sysdeps
+        with:
+          extra-apt: figlet
+      - name: Report what landed
+        shell: bash
+        run: |
+          figlet ok
+          ## What systemfonts and textshaping need to compile from source.
+          pkg-config --modversion fontconfig freetype2 fribidi harfbuzz
+          dpkg -s libmagick++-dev libgit2-dev libglpk-dev libxml2-dev libcurl4-openssl-dev python3-gdal > /dev/null
 
   ## Pure logic, no network. The regression this guards: the end of `Remotes:`
   ## was found with a field-name pattern lacking "/", so a following
