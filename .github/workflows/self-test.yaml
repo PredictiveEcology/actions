@@ -375,6 +375,10 @@ jobs:
     name: install-apt-packages (cold)
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    ## The cache key holds the runner image version, so the warm job can only hit when it
+    ## gets the same image; while GitHub rolls out a new image the two jobs can differ.
+    outputs:
+      image: ${{ steps.image.outputs.image }}
     steps:
       - uses: actions/checkout@v7
       - uses: ./install-apt-packages
@@ -382,6 +386,9 @@ jobs:
           packages: figlet sl
       - shell: bash
         run: figlet ok && test -x /usr/games/sl
+      - id: image
+        shell: bash
+        run: echo "image=${ImageVersion:-noimage}" >> "$GITHUB_OUTPUT"
 
   install-apt-packages-warm:
     name: install-apt-packages (cache hit)
@@ -397,8 +404,14 @@ jobs:
       - shell: bash
         env:
           HIT: ${{ steps.apt.outputs.cache-hit }}
+          COLD_IMAGE: ${{ needs.install-apt-packages-cold.outputs.image }}
         run: |
           figlet ok && test -x /usr/games/sl
+          if [ "${ImageVersion:-noimage}" != "$COLD_IMAGE" ]; then
+            ## a miss is the right answer on another image (2026-11-20: 20261111.196 vs 20261116.88)
+            echo "::notice::runner image ${ImageVersion:-noimage} differs from the cold job's $COLD_IMAGE; cache-hit not tested this run"
+            exit 0
+          fi
           [ "$HIT" = "true" ] || { echo "::error::expected an apt cache hit, got '$HIT'"; exit 1; }
 
   ## Pure logic, no network. The regression this guards: the end of `Remotes:`
