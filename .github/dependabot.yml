@@ -47,6 +47,7 @@ updates:
       - /install-Rmd-pkgs
       - /install-SpaDES
       - /install-depends-on
+      - /install-module-sysdeps
       - /install-spatial-deps
       - /revdeps-check
       - /setup-r-deps
