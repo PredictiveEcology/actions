@@ -141,44 +141,9 @@ jobs:
       - if: ${{ inputs.system-deps }}
         uses: PredictiveEcology/actions/install-spatial-deps@main
 
-      ## The generated file ran a bare `sudo apt-get install` with no
-      ## `apt-get update`, no retries and no timeout. A composite-action step
-      ## cannot use `timeout-minutes`, so a stalled mirror burns the full 6h job
-      ## ceiling -- that is what happened to two LandWebUtils jobs on 2026-08-19.
-      ## Same retry wrapper install-spatial-deps uses.
-      - name: Install other system dependencies
-        shell: bash
-        env:
-          DEBIAN_FRONTEND: noninteractive
-          EXTRA_APT: ${{ inputs.extra-apt }}
-        run: |
-          set -euo pipefail
-          retry() {
-            local n
-            for n in 1 2 3; do
-              ## A timeout while dpkg is unpacking leaves it "interrupted", and every later
-              ## apt-get then fails at once until this runs; it does nothing otherwise.
-              sudo dpkg --configure -a || true
-              if timeout --kill-after=60s "$1" bash -c "$2"; then return 0; fi
-              echo "::warning::'$2' failed or timed out (attempt $n/3); retrying..."
-              sleep $((n * 15))
-            done
-            echo "::error::'$2' still failing after 3 attempts"
-            return 1
-          }
-          printf 'Acquire::Retries "5";\nAcquire::http::Timeout "30";\nAcquire::https::Timeout "30";\n' \
-            | sudo tee /etc/apt/apt.conf.d/99-ci-timeouts > /dev/null
-          retry 5m  "sudo -E apt-get update -y"
-          ## libfontconfig1/libfreetype6/libfribidi/libharfbuzz: systemfonts and textshaping (kableExtra ->
-          ## svglite) compile from source whenever P3M has no binary yet for the runner's Ubuntu (2026-11-20:
-          ## textshaping 1.1.0 on ubuntu-26.04 failed every render with "there is no package called 'textshaping'").
-          install_cmd="sudo -E NEEDRESTART_MODE=a apt-get install -y --no-install-recommends \
-                       libcurl4-openssl-dev libfontconfig1-dev libfreetype6-dev libfribidi-dev \
-                       libgit2-dev libglpk-dev libharfbuzz-dev libmagick++-dev \
-                       libxml2-dev python3-gdal ${EXTRA_APT}"
-          ## Download first: killing a download is harmless and the next attempt keeps it.
-          retry 10m "$install_cmd --download-only"
-          retry 10m "$install_cmd"
+      - uses: PredictiveEcology/actions/install-module-sysdeps@main
+        with:
+          extra-apt: ${{ inputs.extra-apt }}
 
       - uses: r-lib/actions/setup-r@v2
         with:

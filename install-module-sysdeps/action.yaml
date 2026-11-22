@@ -1,0 +1,27 @@
+name: 'install-module-sysdeps'
+description: >-
+  System libraries the SpaDES module workflows (testthat-module, render-module-rmd,
+  pkgdown-module) need beyond the geospatial set, installed through install-apt-packages.
+author: 'PredictiveEcology'
+
+inputs:
+  extra-apt:
+    description: "Further apt packages (whitespace-separated), installed in the same transaction."
+    required: false
+    default: ""
+
+runs:
+  using: "composite"
+  steps:
+    ## The one definition of this list. The three module workflows used to carry
+    ## their own copies, and a fix to one (the font libraries, #100) missed the others.
+    ## libfontconfig1/libfreetype6/libfribidi/libharfbuzz: systemfonts and textshaping
+    ## (kableExtra -> svglite) compile from source whenever P3M has no binary yet for the
+    ## runner's Ubuntu (2026-11-20: textshaping 1.1.0 on ubuntu-26.04 failed with
+    ## "Failed to build textshaping 1.1.0").
+    - uses: PredictiveEcology/actions/install-apt-packages@main
+      with:
+        packages: >-
+          libcurl4-openssl-dev libfontconfig1-dev libfreetype6-dev libfribidi-dev
+          libgit2-dev libglpk-dev libharfbuzz-dev libmagick++-dev libxml2-dev
+          python3-gdal ${{ inputs.extra-apt }}

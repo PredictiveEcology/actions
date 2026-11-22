@@ -1,5 +1,12 @@
 # PredictiveEcology/actions (development)
 
+- **The module workflows share one system-library list; `pkgdown-module` and `testthat-module` now have the font libraries.**
+  `render-module-rmd`, `pkgdown-module` and `testthat-module` each hand-wrote the same apt
+  list, and the font and shaping libraries added in #100 went into only one. Without them
+  `textshaping` 1.1.0 fails to build where there is no binary yet (ubuntu-26.04). The list
+  now lives in the new `install-module-sysdeps` action, which calls `install-apt-packages`
+  (so installs are cached too). The `extra-apt` inputs work as before.
+
 - **`test-downstream.yaml` now stages the Google Drive secret before the check.**
   It put the raw secret into `GOOGLEDRIVE_AUTH`, where the downstream package's tests
   expect a file path, so they could not log in. It now runs `stage-gdrive-auth` and
