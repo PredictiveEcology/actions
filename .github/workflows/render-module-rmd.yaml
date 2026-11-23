@@ -66,6 +66,15 @@ on:
         required: false
         type: string
         default: ""
+      extra-files:
+        description: >-
+          Other files the render writes that the repository tracks, committed
+          with the .md: space-separated paths relative to the module folder,
+          e.g. `figures/moduleVersionBadge.png`, the version badge a module's
+          README shows. Default empty: only the .md is committed.
+        required: false
+        type: string
+        default: ""
 
 ## Inside a called workflow `github.workflow` resolves to the CALLER's workflow
 ## name, so without the `-reusable` suffix this key collides with the identical
@@ -207,14 +216,40 @@ jobs:
           rmarkdown::render(file.path(if (nzchar(md)) md else ".", paste0(m, ".Rmd")),
                             encoding = "UTF-8")
 
-      ## Only the .md. A module .Rmd that sets `keep_md: yes` leaves `<module>.md`
-      ## (GitHub-flavoured markdown) beside the .html, and that .md is what the repo
-      ## shows: its README.md symlinks to it. The .html is not committed. A module whose
-      ## .Rmd does not keep the .md fails here, as it has nothing to commit.
+      ## The .md, and the `extra-files`, into one folder for the commit job, at their
+      ## paths relative to the module folder. A module .Rmd that sets `keep_md: yes`
+      ## leaves `<module>.md` (GitHub-flavoured markdown) beside the .html, and that .md
+      ## is what the repo shows: its README.md symlinks to it. The .html is not
+      ## committed. A module whose .Rmd does not keep the .md fails here, as it has
+      ## nothing to commit; so does a listed extra file the render did not write.
+      - name: Collect rendered files
+        shell: bash
+        env:
+          MODULE: ${{ inputs.module }}
+          MODULE_DIR: ${{ inputs.module-dir }}
+          EXTRA_FILES: ${{ inputs.extra-files }}
+        run: |
+          set -euo pipefail
+          d="${MODULE_DIR:-.}"
+          out="${RUNNER_TEMP}/rendered"
+          mkdir -p "$out"
+          cp "${d}/${MODULE}.md" "$out/"
+          read -r -a extra <<< "${EXTRA_FILES}"
+          for f in "${extra[@]}"; do
+            ## The commit job copies each file back to this path in the module folder.
+            case "/${f}/" in
+              //* | */../*)
+                echo "::error::extra-files: '${f}' is not a path inside the module folder"
+                exit 1 ;;
+            esac
+            mkdir -p "${out}/$(dirname "$f")"
+            cp "${d}/${f}" "${out}/${f}"
+          done
+
       - uses: actions/upload-artifact@v6
         with:
           name: module-md-${{ inputs.module }}
-          path: ${{ inputs.module-dir || '.' }}/${{ inputs.module }}.md
+          path: ${{ runner.temp }}/rendered
           if-no-files-found: error
           retention-days: 1
 
@@ -249,12 +284,14 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           MODULE: ${{ inputs.module }}
           MODULE_DIR: ${{ inputs.module-dir }}
+          EXTRA_FILES: ${{ inputs.extra-files }}
         run: |
           set -euo pipefail
           git config --local user.name "github-actions[bot]"
           git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
           d="${MODULE_DIR:-.}"
           src="${RUNNER_TEMP}/render"
+          read -r -a extra <<< "${EXTRA_FILES}"
           ## Commit onto the branch tip, replacing the rendered files whole, so nothing is
           ## merged. The checkout is the commit that triggered this run, and the branch
           ## may have moved since: the previous run's render of this module, or the other
@@ -269,6 +306,11 @@ jobs:
               git reset --hard FETCH_HEAD
               cp "${src}/${MODULE}.md" "${d}/${MODULE}.md"
               git add "${d}/${MODULE}.md"
+              for f in "${extra[@]}"; do
+                mkdir -p "$(dirname "${d}/${f}")"
+                cp "${src}/${f}" "${d}/${f}"
+                git add "${d}/${f}"
+              done
               ## `git commit` exits non-zero when nothing is staged, which is the
               ## normal no-change case -- exit cleanly rather than pushing.
               git commit -m "Re-build ${MODULE}.Rmd" || exit 0

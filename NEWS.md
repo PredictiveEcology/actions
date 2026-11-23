@@ -1,5 +1,13 @@
 # PredictiveEcology/actions (development)
 
+- **`render-module-rmd.yaml` can commit other rendered files with the `.md` (`extra-files`).**
+  A module's README shows a version badge that the `.Rmd` downloads at render time, but
+  only the `.md` was committed, so the committed badge kept the version it was first
+  rendered with. List such files, relative to the module folder (e.g.
+  `extra-files: figures/moduleVersionBadge.png`), and the commit job copies each one back
+  and commits it with the `.md`. A listed file the render did not write, or a path outside
+  the module folder, fails the render job. Without the input nothing changes.
+
 - **The module workflows share one system-library list; `pkgdown-module` and `testthat-module` now have the font libraries.**
   `render-module-rmd`, `pkgdown-module` and `testthat-module` each hand-wrote the same apt
   list, and the font and shaping libraries added in #100 went into only one. Without them
