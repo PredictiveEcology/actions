@@ -216,6 +216,19 @@ jobs:
       ## After the dependency install on purpose, so a `Depends-on:` PR overrides it.
       - uses: PredictiveEcology/actions/install-depends-on@main
 
+      ## The checkout holds the event-flow figures the last render committed. Removed, so
+      ## the files collected below are only those this render writes: a render that writes
+      ## none (the module cannot be read, has no events, its chunks are skipped or removed)
+      ## then collects none, and the commit job removes them from the branch.
+      - name: Remove the previous event-flow figures
+        shell: bash
+        env:
+          MODULE: ${{ inputs.module }}
+          MODULE_DIR: ${{ inputs.module-dir }}
+        run: |
+          d="${MODULE_DIR:-.}"
+          rm -f -- "${d}/figures/${MODULE}_eventFlow.png" "${d}/figures/${MODULE}_io_"*.png
+
       - name: Render module Rmd
         shell: Rscript {0}
         env:
@@ -321,6 +334,14 @@ jobs:
           for i in 1 2 3; do
             if git fetch --depth=1 "$remote" "${GITHUB_REF_NAME}"; then
               git reset --hard FETCH_HEAD
+              ## The event-flow figures: the branch keeps exactly the ones this render wrote,
+              ## so the figure of an event the module no longer has goes, and so do all of
+              ## them when the render wrote none (its .md then shows none). Removed before
+              ## anything is copied, so a figure also listed in `extra-files` is not refused
+              ## as staged. `add -f` below: the README shows them even where .gitignore
+              ## covers figures/.
+              git rm -q --ignore-unmatch -- "${d}/figures/${MODULE}_eventFlow.png" \
+                "${d}/figures/${MODULE}_io_*.png"
               cp "${src}/${MODULE}.md" "${d}/${MODULE}.md"
               git add "${d}/${MODULE}.md"
               for f in "${extra[@]}"; do
@@ -328,12 +349,6 @@ jobs:
                 cp "${src}/${f}" "${d}/${f}"
                 git add "${d}/${f}"
               done
-              ## The event-flow figures: the branch keeps exactly the ones this render wrote,
-              ## so the figure of an event the module no longer has goes, and so do all of
-              ## them when the render wrote none (its .md then shows none). `add -f`: the
-              ## README shows them even where .gitignore covers figures/.
-              git rm -q --ignore-unmatch -- "${d}/figures/${MODULE}_eventFlow.png" \
-                "${d}/figures/${MODULE}_io_*.png"
               for f in "${src}/figures/${MODULE}_eventFlow.png" "${src}/figures/${MODULE}_io_"*.png; do
                 [ -e "$f" ] || continue
                 mkdir -p "${d}/figures"
