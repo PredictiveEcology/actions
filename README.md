@@ -181,6 +181,7 @@ it; the legend is under the second table.
 | `depends-on-reduced-matrix` | ✅ `false` | – | – | – | – | – | – | – | – | – |
 | `depends-on-virtual-bump` | ✅ `false` | ✅ `false` | ✅ `false` | – | – | – | ✅ `false` | ✅ `false` | ✅ `false` | – |
 | `deps-timeout-minutes` | ✅ `60` | – | – | – | – | – | – | – | – | – |
+| `extra-files` | – | – | – | – | – | – | ✅ `""` | – | – | – |
 | `module-dir` | – | – | – | – | – | – | ✅ `""` | ✅ `""` | – | – |
 | `timeout-minutes` | ✅ `120` | – | – | – | – | – | – | – | – | – |
 

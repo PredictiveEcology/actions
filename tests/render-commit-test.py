@@ -35,14 +35,18 @@ steps = jobs["commit"]["steps"]
 download = next(s for s in steps
                 if str(s.get("uses", "")).startswith("actions/download-artifact"))
 step = next(s for s in steps if s.get("name") == "Commit results")
-check(set(step["env"]) <= {"GH_TOKEN", "MODULE", "MODULE_DIR"} and "${{" not in step["run"],
+check(set(step["env"]) <= {"GH_TOKEN", "MODULE", "MODULE_DIR", "EXTRA_FILES"}
+      and "${{" not in step["run"],
       "the step needs only the inputs this test supplies")
+collect = next(s for s in jobs["render"]["steps"] if s.get("name") == "Collect rendered files")
+check(set(collect["env"]) <= {"MODULE", "MODULE_DIR", "EXTRA_FILES"}
+      and "${{" not in collect["run"],
+      "the collect step needs only the inputs this test supplies")
 upload = next(s for s in jobs["render"]["steps"]
               if str(s.get("uses", "")).startswith("actions/upload-artifact"))
-check(upload["with"]["path"].strip().splitlines() == ["${{ inputs.module-dir || '.' }}/"
-                                                      "${{ inputs.module }}.md"]
+check(upload["with"]["path"].strip() == "${{ runner.temp }}/rendered"
       and upload["with"]["if-no-files-found"] == "error",
-      "the render uploads only the module's .md, and fails without one")
+      "the render uploads the collected folder, and fails without files")
 
 T = tempfile.mkdtemp()
 atexit.register(shutil.rmtree, T, True)
@@ -90,7 +94,7 @@ def render(module, version, date, text, d=""):
                        '---\n\n%s\n' % v}
 
 
-def run_step(job, module, module_dir, files):
+def run_step(job, module, module_dir, files, extra=""):
     """Put `files` where download-artifact puts them, then run the step in checkout `job`."""
     temp = tempfile.mkdtemp(dir=T)
     path = (download["with"]["path"].replace("${{ runner.temp }}", temp)
@@ -99,13 +103,17 @@ def run_step(job, module, module_dir, files):
         raise SystemExit("FAIL: cannot resolve the download path " + path)
     dest = os.path.join(job, path)
     os.makedirs(dest, exist_ok=True)
+    # The artifact holds each file at its path relative to the module folder.
     for p, text in files.items():
-        with open(os.path.join(dest, os.path.basename(p)), "w") as f:
+        target = os.path.join(dest, os.path.relpath(p, module_dir or "."))
+        os.makedirs(os.path.dirname(target), exist_ok=True)
+        with open(target, "w") as f:
             f.write(text)
     with open(os.path.join(temp, "step.sh"), "w") as f:
         f.write(step["run"])
     env = dict(ENV, GH_TOKEN="token", MODULE=module, MODULE_DIR=module_dir,
-               GITHUB_REPOSITORY=REPO, GITHUB_REF_NAME=BRANCH, RUNNER_TEMP=temp)
+               EXTRA_FILES=extra, GITHUB_REPOSITORY=REPO, GITHUB_REF_NAME=BRANCH,
+               RUNNER_TEMP=temp)
     r = subprocess.run(["bash", "--noprofile", "--norc", "-eo", "pipefail",
                         os.path.join(temp, "step.sh")], cwd=job, env=env,
                        capture_output=True, text=True)
@@ -116,7 +124,10 @@ def run_step(job, module, module_dir, files):
 
 def on_branch(files):
     """Whether the tip of the branch holds exactly these files."""
-    return all(git(remote, "show", "%s:%s" % (BRANCH, p)) == t for p, t in files.items())
+    try:
+        return all(git(remote, "show", "%s:%s" % (BRANCH, p)) == t for p, t in files.items())
+    except subprocess.CalledProcessError:  # a file missing from the branch
+        return False
 
 
 os.makedirs(remote)
@@ -179,3 +190,67 @@ check(run_step(checkout("md-run"), M, "", dict(md_only, **{M + ".html": "<p>Thre
       and not any(p.endswith(".html")
                   for p in git(remote, "ls-tree", "-r", "--name-only", BRANCH).split()),
       "the step commits the .md and no .html")
+
+# 6. `extra-files`: a file the render writes besides the .md, such as the version badge a
+#    module's README shows, is committed with it at its path in the module folder.
+BADGE = "figures/moduleVersionBadge.png"
+bumped = dict(render(M, "1.0.3", "2026-10-17", "Three parameters."), **{BADGE: "v1.0.3\n"})
+check(run_step(checkout("extra-run"), M, "", bumped, BADGE) and on_branch(bumped),
+      "an extra file is committed with the .md")
+tip = git(remote, "rev-parse", BRANCH)
+check(run_step(checkout("extra-same-run"), M, "", bumped, BADGE)
+      and git(remote, "rev-parse", BRANCH) == tip,
+      "an unchanged render and extra file make no commit")
+in_dir = dict(render("modB", "1.0.1", "2026-10-17", "Text.", "modules/modB"),
+              **{"modules/modB/" + BADGE: "v1.0.1\n"})
+check(run_step(checkout("extra-dir-run"), "modB", "modules/modB", in_dir, BADGE)
+      and on_branch(in_dir),
+      "an extra file lands in the module's own folder")
+
+
+# 7. The render job's collect step, which fills the folder the commit job downloads.
+def run_collect(files, module, module_dir="", extra=""):
+    """Run the collect step in a checkout holding `files` ({path: text}).
+
+    Returns {path relative to the uploaded folder: text}, or None if the step failed.
+    """
+    job, temp = tempfile.mkdtemp(dir=T), tempfile.mkdtemp(dir=T)
+    for p, text in files.items():
+        os.makedirs(os.path.dirname(os.path.join(job, p)), exist_ok=True)
+        with open(os.path.join(job, p), "w") as f:
+            f.write(text)
+    with open(os.path.join(temp, "collect.sh"), "w") as f:
+        f.write(collect["run"])
+    env = dict(ENV, MODULE=module, MODULE_DIR=module_dir, EXTRA_FILES=extra, RUNNER_TEMP=temp)
+    r = subprocess.run(["bash", "--noprofile", "--norc", "-eo", "pipefail",
+                        os.path.join(temp, "collect.sh")], cwd=job, env=env,
+                       capture_output=True, text=True)
+    if r.returncode:
+        return None
+    out = upload["with"]["path"].strip().replace("${{ runner.temp }}", temp)
+    found = {}
+    for root, _, names in os.walk(out):
+        for n in names:
+            with open(os.path.join(root, n)) as f:
+                found[os.path.relpath(os.path.join(root, n), out)] = f.read()
+    return found
+
+
+rendered = {M + ".md": "md\n", M + ".html": "html\n", BADGE: "badge\n",
+            "figures/issuesBadge.png": "issues\n"}
+check(run_collect(rendered, M) == {M + ".md": "md\n"},
+      "without extra-files only the .md is collected")
+check(run_collect(rendered, M, extra=BADGE) == {M + ".md": "md\n", BADGE: "badge\n"},
+      "a listed extra file is collected at its path, and nothing else")
+nested = {"modules/modB/modB.md": "md\n", "modules/modB/" + BADGE: "badge\n"}
+check(run_collect(nested, "modB", "modules/modB", BADGE) == {"modB.md": "md\n",
+                                                             BADGE: "badge\n"},
+      "paths are relative to the module folder")
+check(run_collect({M + ".md": "md\n"}, M, extra=BADGE) is None,
+      "a listed file the render did not write fails the step")
+check(run_collect({M + ".html": "html\n"}, M) is None,
+      "a render with no .md fails the step")
+# Each of these names a file that exists, outside the module folder.
+check(all(run_collect(dict(nested, **{"modules/outside.png": "x\n"}), "modB", "modules/modB", f)
+          is None for f in ("../outside.png", "/etc/hostname", "figures/../../outside.png")),
+      "a path outside the module folder fails the step")
