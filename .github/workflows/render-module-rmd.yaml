@@ -9,6 +9,14 @@
 ## Assumes the module name equals the repository name. That is already baked
 ## into the generated file this replaces (see the `paths = ".."` note below) and
 ## holds for every module surveyed.
+##
+## Event-flow figures. SpaDES.core's module template (3.2.1.9068 and later) draws
+## the module's events and the objects each reads and writes at knit time, as
+## figures/<module>_eventFlow.png and one figures/<module>_io_<event>.png per event,
+## and the .md shows them. They are committed with the .md without being listed in
+## `extra-files`: newModule() writes the caller, so no caller could list them, and
+## their names change with the module's events. The branch keeps exactly the ones
+## the render wrote, so the figure of an event the module no longer has is removed.
 
 name: render-module-rmd
 
@@ -150,9 +158,12 @@ jobs:
       - if: ${{ inputs.system-deps }}
         uses: PredictiveEcology/actions/install-spatial-deps@main
 
+      ## fonts-noto-core: SpaDES.core draws the event-flow figures in Noto Sans and measures
+      ## the text in it, so the figures come out the same on every runner (it falls back to
+      ## a generic sans font, whose metrics differ, when Noto Sans is missing).
       - uses: PredictiveEcology/actions/install-module-sysdeps@main
         with:
-          extra-apt: ${{ inputs.extra-apt }}
+          extra-apt: fonts-noto-core ${{ inputs.extra-apt }}
 
       - uses: r-lib/actions/setup-r@v2
         with:
@@ -245,6 +256,12 @@ jobs:
             mkdir -p "${out}/$(dirname "$f")"
             cp "${d}/${f}" "${out}/${f}"
           done
+          ## The event-flow figures, without being listed: see "Event-flow figures" above.
+          for f in "${d}/figures/${MODULE}_eventFlow.png" "${d}/figures/${MODULE}_io_"*.png; do
+            [ -e "$f" ] || continue
+            mkdir -p "${out}/figures"
+            cp "$f" "${out}/figures/"
+          done
 
       - uses: actions/upload-artifact@v6
         with:
@@ -310,6 +327,18 @@ jobs:
                 mkdir -p "$(dirname "${d}/${f}")"
                 cp "${src}/${f}" "${d}/${f}"
                 git add "${d}/${f}"
+              done
+              ## The event-flow figures: the branch keeps exactly the ones this render wrote,
+              ## so the figure of an event the module no longer has goes, and so do all of
+              ## them when the render wrote none (its .md then shows none). `add -f`: the
+              ## README shows them even where .gitignore covers figures/.
+              git rm -q --ignore-unmatch -- "${d}/figures/${MODULE}_eventFlow.png" \
+                "${d}/figures/${MODULE}_io_*.png"
+              for f in "${src}/figures/${MODULE}_eventFlow.png" "${src}/figures/${MODULE}_io_"*.png; do
+                [ -e "$f" ] || continue
+                mkdir -p "${d}/figures"
+                cp "$f" "${d}/figures/"
+                git add -f "${d}/figures/$(basename "$f")"
               done
               ## `git commit` exits non-zero when nothing is staged, which is the
               ## normal no-change case -- exit cleanly rather than pushing.
