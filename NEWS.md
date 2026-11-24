@@ -1,5 +1,16 @@
 # PredictiveEcology/actions (development)
 
+- **`render-module-rmd.yaml` commits a module's event-flow figures with the `.md`.**
+  SpaDES.core's module template (3.2.1.9068 and later) draws the module's events, and the
+  objects each event reads and writes, at knit time, as `figures/<module>_eventFlow.png` and
+  one `figures/<module>_io_<event>.png` per event. The render now collects these without
+  being listed, and the commit job makes the branch hold exactly the ones the render wrote,
+  so the figure of an event the module no longer has is removed. They are added even where
+  `.gitignore` covers `figures/`, since the README shows them. The render job also installs
+  the font the figures are drawn in (`fonts-noto-core`), and `install-Rmd-pkgs` the packages
+  that draw them (ggplot2, ragg, systemfonts, textshaping, xml2, xmlparsedata). Callers need
+  no change.
+
 - **`render-module-rmd.yaml` can commit other rendered files with the `.md` (`extra-files`).**
   A module's README shows a version badge that the `.Rmd` downloads at render time, but
   only the `.md` was committed, so the committed badge kept the version it was first

@@ -22,4 +22,11 @@ runs:
           Require::Require(c("PredictiveEcology/SpaDES.docs@development"),
                            require = FALSE, upgrade = as.logical("${{ inputs.upgrade }}"))
           cat("::endgroup::\n")
+          ## SpaDES.core's module template draws the module's event-flow figures at knit time
+          ## (moduleEventFlow() and friends); these are its Suggests for that, and without them
+          ## the README gets a note in place of the figures.
+          cat("::group::Installing the packages that draw a module's event-flow figures\n")
+          Require::Require(c("ggplot2", "ragg", "systemfonts", "textshaping", "xml2", "xmlparsedata"),
+                           require = FALSE, upgrade = as.logical("${{ inputs.upgrade }}"))
+          cat("::endgroup::\n")
         shell: Rscript {0}

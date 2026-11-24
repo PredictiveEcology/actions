@@ -254,3 +254,122 @@ check(run_collect({M + ".html": "html\n"}, M) is None,
 check(all(run_collect(dict(nested, **{"modules/outside.png": "x\n"}), "modB", "modules/modB", f)
           is None for f in ("../outside.png", "/etc/hostname", "figures/../../outside.png")),
       "a path outside the module folder fails the step")
+
+
+def tracked(path):
+    """Whether the tip of the branch holds `path`."""
+    return path in git(remote, "ls-tree", "-r", "--name-only", BRANCH).split()
+
+
+# 8. Event-flow figures. SpaDES.core's module template writes figures/<module>_eventFlow.png
+#    and one figures/<module>_io_<event>.png per event; the README shows them, so they are
+#    collected without being listed, and no other figure is.
+FLOW, IO = "figures/%s_eventFlow.png", "figures/%s_io_%s.png"
+figs = {FLOW % M: "flow\n", IO % (M, "init"): "init\n", IO % (M, "plot"): "plot\n"}
+check(run_collect(dict(rendered, **figs), M) == dict({M + ".md": "md\n"}, **figs),
+      "the module's event-flow figures are collected without being listed")
+check(run_collect(dict(rendered, **figs), M, extra=BADGE)
+      == dict({M + ".md": "md\n", BADGE: "badge\n"}, **figs),
+      "event-flow figures and listed extra files are collected together")
+check(run_collect({M + ".md": "md\n", IO % (M + "Mod", "x"): "other\n"}, M) == {M + ".md": "md\n"},
+      "a render with no event-flow figures collects only the .md, not another module's figure")
+check(run_collect({"modules/modB/modB.md": "md\n", "modules/modB/" + FLOW % "modB": "flow\n"},
+                  "modB", "modules/modB") == {"modB.md": "md\n", FLOW % "modB": "flow\n"},
+      "event-flow figures are collected relative to the module folder")
+
+# 9. The figures are committed with the .md, and a figure for an event the module no longer
+#    has is removed.
+fig_run = dict(render(M, "1.0.4", "2026-10-18", "Events."), **figs)
+check(run_step(checkout("fig-run"), M, "", fig_run) and on_branch(fig_run),
+      "the event-flow figures are committed with the .md")
+figs2 = {FLOW % M: "flow 2\n", IO % (M, "init"): "init\n", IO % (M, "burn"): "burn\n"}
+fig_run2 = dict(render(M, "1.0.5", "2026-10-19", "Events."), **figs2)
+check(run_step(checkout("fig-run2"), M, "", fig_run2) and on_branch(fig_run2)
+      and not tracked(IO % (M, "plot")),
+      "a figure for an event that no longer exists is removed")
+
+# 10. A render that wrote no event-flow figures (the module could not be read, or its .Rmd
+#     has no such chunks) removes the committed ones, as its .md no longer shows them; the
+#     badge and other figures stay.
+others = {"figures/other.png": "other\n", IO % (M + "Mod", "x"): "x\n"}
+push(others, "Add other figures")
+no_figs = render(M, "1.0.6", "2026-10-20", "No events.")
+check(run_step(checkout("nofig-run"), M, "", no_figs) and on_branch(no_figs)
+      and on_branch(others) and tracked(BADGE)
+      and not any(tracked(p) for p in figs2),
+      "a render without figures removes the module's figures and keeps the rest")
+
+# 11. Several modules in one repository: one module's figures land in its own folder, and
+#     another module's stay as they are.
+c_flow = {"modules/modC/" + FLOW % "modC": "c flow\n"}
+push(c_flow, "Add modC's figure")
+b_figs = dict(render("modB", "1.0.2", "2026-10-20", "Text.", "modules/modB"),
+              **{"modules/modB/" + FLOW % "modB": "b flow\n",
+                 "modules/modB/" + IO % ("modB", "init"): "b init\n"})
+check(run_step(checkout("fig-dir-run"), "modB", "modules/modB", b_figs)
+      and on_branch(b_figs) and on_branch(c_flow),
+      "a module's figures land in its own folder and leave another module's alone")
+
+# 11b. A figure also listed in `extra-files` is committed with the rest, not refused.
+listed = dict(render(M, "1.0.6", "2026-10-21", "Listed."), **{FLOW % M: "flow listed\n"})
+check(run_step(checkout("listed-run"), M, "", listed, FLOW % M) and on_branch(listed),
+      "a figure also listed in extra-files is committed")
+
+# 12. A repository whose .gitignore covers figures/ still gets them: its README shows them.
+push({".gitignore": "figures/\n"}, "Ignore figures")
+ignored = dict(render(M, "1.0.7", "2026-10-21", "Events."), **{FLOW % M: "flow 3\n"})
+check(run_step(checkout("ignored-run"), M, "", ignored) and on_branch(ignored),
+      "the figures are committed even where .gitignore covers them")
+
+# 13. The render installs the font the figures are drawn in, and the packages that draw them.
+sysdeps = next(s for s in jobs["render"]["steps"]
+               if str(s.get("uses", "")).startswith("PredictiveEcology/actions/install-module-sysdeps"))
+check("fonts-noto-core" in sysdeps.get("with", {}).get("extra-apt", "").split(),
+      "the render installs fonts-noto-core")
+with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "install-Rmd-pkgs",
+                       "action.yaml")) as f:
+    rmd_pkgs = f.read()
+check(all('"%s"' % p in rmd_pkgs
+          for p in ("ggplot2", "ragg", "systemfonts", "textshaping", "xml2", "xmlparsedata")),
+      "install-Rmd-pkgs installs the packages that draw the figures")
+
+# 14. The render job's checkout holds the figures the last render committed. They are removed
+#     before the render, so a render that writes none (the module cannot be read, has no
+#     events, its chunks are skipped or removed) collects none, and the commit removes them.
+render_steps = jobs["render"]["steps"]
+clean = next((s for s in render_steps if s.get("name") == "Remove the previous event-flow figures"),
+             None)
+names = [s.get("name") for s in render_steps]
+check(clean is not None and set(clean.get("env", {})) <= {"MODULE", "MODULE_DIR"}
+      and "${{" not in clean["run"]
+      and names.index(clean["name"]) < names.index("Render module Rmd"),
+      "the render job removes the previous event-flow figures before rendering")
+
+
+def run_clean(files, module, module_dir=""):
+    """Run the clean step in a checkout holding `files`; return the files left."""
+    job, temp = tempfile.mkdtemp(dir=T), tempfile.mkdtemp(dir=T)
+    for p, text in files.items():
+        os.makedirs(os.path.dirname(os.path.join(job, p)), exist_ok=True)
+        with open(os.path.join(job, p), "w") as f:
+            f.write(text)
+    with open(os.path.join(temp, "clean.sh"), "w") as f:
+        f.write(clean["run"])
+    env = dict(ENV, MODULE=module, MODULE_DIR=module_dir)
+    subprocess.run(["bash", "--noprofile", "--norc", "-eo", "pipefail",
+                    os.path.join(temp, "clean.sh")], cwd=job, env=env, check=True)
+    left = {}
+    for root, _, ns in os.walk(job):
+        for n in ns:
+            left[os.path.relpath(os.path.join(root, n), job)] = True
+    return set(left)
+
+
+keep = {M + ".Rmd": "rmd\n", BADGE: "badge\n", "figures/other.png": "other\n",
+        IO % (M + "Mod", "x"): "x\n"}
+check(run_clean(dict(keep, **figs), M) == set(keep),
+      "the clean step removes the module's event-flow figures and nothing else")
+check(run_clean({"modules/modB/" + FLOW % "modB": "b\n", "modules/modC/" + FLOW % "modC": "c\n"},
+                "modB", "modules/modB") == {"modules/modC/" + FLOW % "modC"},
+      "the clean step removes only its own module's figures")
+check(run_clean(keep, M) == set(keep), "the clean step succeeds when there are no figures")
