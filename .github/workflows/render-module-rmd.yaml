@@ -339,9 +339,10 @@ jobs:
               ## them when the render wrote none (its .md then shows none). Removed before
               ## anything is copied, so a figure also listed in `extra-files` is not refused
               ## as staged. `add -f` below: the README shows them even where .gitignore
-              ## covers figures/.
+              ## covers figures/. `:(glob)`: in a plain pathspec `*` also crosses `/`, which
+              ## would remove files in a folder below figures/ that the render never wrote.
               git rm -q --ignore-unmatch -- "${d}/figures/${MODULE}_eventFlow.png" \
-                "${d}/figures/${MODULE}_io_*.png"
+                ":(glob)${d}/figures/${MODULE}_io_*.png"
               cp "${src}/${MODULE}.md" "${d}/${MODULE}.md"
               git add "${d}/${MODULE}.md"
               for f in "${extra[@]}"; do
