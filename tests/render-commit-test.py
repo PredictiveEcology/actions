@@ -315,6 +315,15 @@ listed = dict(render(M, "1.0.6", "2026-10-21", "Listed."), **{FLOW % M: "flow li
 check(run_step(checkout("listed-run"), M, "", listed, FLOW % M) and on_branch(listed),
       "a figure also listed in extra-files is committed")
 
+# 11c. The removal of old figures matches files in figures/ itself, not in a folder below it
+#      whose name happens to start like an event figure's.
+deep = {"figures/%s_io_sub/deep.png" % M: "deep\n"}
+push(deep, "Add a figure in a subfolder")
+check(run_step(checkout("deep-run"), M, "",
+               dict(render(M, "1.0.6", "2026-10-21", "Deep."), **{FLOW % M: "flow deep\n"}))
+      and on_branch(deep),
+      "a file in a folder below figures/ is not removed")
+
 # 12. A repository whose .gitignore covers figures/ still gets them: its README shows them.
 push({".gitignore": "figures/\n"}, "Ignore figures")
 ignored = dict(render(M, "1.0.7", "2026-10-21", "Events."), **{FLOW % M: "flow 3\n"})
