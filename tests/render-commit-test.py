@@ -35,7 +35,7 @@ steps = jobs["commit"]["steps"]
 download = next(s for s in steps
                 if str(s.get("uses", "")).startswith("actions/download-artifact"))
 step = next(s for s in steps if s.get("name") == "Commit results")
-check(set(step["env"]) <= {"GH_TOKEN", "MODULE", "MODULE_DIR", "EXTRA_FILES"}
+check(set(step["env"]) <= {"GH_TOKEN", "BOT_SLUG", "MODULE", "MODULE_DIR", "EXTRA_FILES"}
       and "${{" not in step["run"],
       "the step needs only the inputs this test supplies")
 collect = next(s for s in jobs["render"]["steps"] if s.get("name") == "Collect rendered files")
@@ -94,9 +94,20 @@ def render(module, version, date, text, d=""):
                        '---\n\n%s\n' % v}
 
 
-def run_step(job, module, module_dir, files, extra=""):
-    """Put `files` where download-artifact puts them, then run the step in checkout `job`."""
+def run_step(job, module, module_dir, files, extra="", bot_slug=""):
+    """Put `files` where download-artifact puts them, then run the step in checkout `job`.
+
+    `bot_slug` stands for the docs-bot token step's `app-slug` output; empty, as when no
+    DOCS_BOT_KEY was passed. A stub `gh` answers the step's lookup of the bot's user id.
+    """
     temp = tempfile.mkdtemp(dir=T)
+    bin_dir = os.path.join(temp, "bin")
+    os.makedirs(bin_dir)
+    with open(os.path.join(bin_dir, "gh"), "w") as f:
+        f.write('#!/bin/sh\n[ "$1" = api ] && [ "$2" = "/users/${BOT_SLUG}[bot]" ] '
+                '&& [ "$3" = --jq ] && [ "$4" = .id ] && echo 12345 && exit 0\n'
+                'echo "unexpected: gh $*" >&2; exit 1\n')
+    os.chmod(os.path.join(bin_dir, "gh"), 0o755)
     path = (download["with"]["path"].replace("${{ runner.temp }}", temp)
             .replace("${{ inputs.module-dir || '.' }}", module_dir or "."))
     if "${{" in path:
@@ -113,7 +124,8 @@ def run_step(job, module, module_dir, files, extra=""):
         f.write(step["run"])
     env = dict(ENV, GH_TOKEN="token", MODULE=module, MODULE_DIR=module_dir,
                EXTRA_FILES=extra, GITHUB_REPOSITORY=REPO, GITHUB_REF_NAME=BRANCH,
-               RUNNER_TEMP=temp)
+               RUNNER_TEMP=temp, BOT_SLUG=bot_slug,
+               PATH=bin_dir + os.pathsep + ENV["PATH"])
     r = subprocess.run(["bash", "--noprofile", "--norc", "-eo", "pipefail",
                         os.path.join(temp, "step.sh")], cwd=job, env=env,
                        capture_output=True, text=True)
@@ -382,3 +394,42 @@ check(run_clean({"modules/modB/" + FLOW % "modB": "b\n", "modules/modC/" + FLOW 
                 "modB", "modules/modB") == {"modules/modC/" + FLOW % "modC"},
       "the clean step removes only its own module's figures")
 check(run_clean(keep, M) == set(keep), "the clean step succeeds when there are no figures")
+
+
+def tip_author():
+    return git(remote, "log", "-1", "--format=%an <%ae>", BRANCH).strip()
+
+
+# 15. Docs bot. Without DOCS_BOT_KEY the commit is github-actions[bot]'s, as before; with it,
+#     the app's bot account's, so GitHub attributes the commit to the app.
+check(tip_author() == "github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>",
+      "without the docs-bot key the render is committed as github-actions[bot]")
+check(run_step(checkout("bot-run"), M, "", render(M, "1.0.8", "2026-10-22", "Bot."),
+               bot_slug="pe-docs-bot")
+      and tip_author() == "pe-docs-bot[bot] <12345+pe-docs-bot[bot]@users.noreply.github.com>",
+      "with the docs-bot key the render is committed as the app's bot account")
+
+# 16. The token step runs only when a key was passed, and the push falls back to GITHUB_TOKEN.
+#     The render job skips the bot's own push: a render of the bot's commit always differs from
+#     it, so a caller with no `paths:` filter would otherwise commit again on every bot commit.
+bot = next((s for s in steps if str(s.get("uses", "")).startswith("actions/create-github-app-token")),
+           None)
+check(bot is not None and bot.get("id") == "docs-bot"
+      and bot.get("if", "").replace(" ", "") == "${{env.HAS_DOCS_BOT_KEY=='true'}}"
+      and jobs["commit"]["env"]["HAS_DOCS_BOT_KEY"].replace(" ", "")
+      == "${{secrets.DOCS_BOT_KEY!=''}}"
+      and bot["with"]["private-key"].replace(" ", "") == "${{secrets.DOCS_BOT_KEY}}",
+      "the token step runs only when DOCS_BOT_KEY was passed")
+check(step["env"]["GH_TOKEN"].replace(" ", "")
+      == "${{steps.docs-bot.outputs.token||secrets.GITHUB_TOKEN}}"
+      and step["env"]["BOT_SLUG"].replace(" ", "") == "${{steps.docs-bot.outputs.app-slug}}",
+      "the push uses the app's token when there is one, else GITHUB_TOKEN")
+with open(WF) as f:
+    wf = yaml.safe_load(f)
+check(wf[True]["workflow_call"]["secrets"]["DOCS_BOT_KEY"]["required"] is False,
+      "DOCS_BOT_KEY is optional")
+check("github.event_name == 'push' && github.actor ==" in jobs["render"]["if"]
+      and "[bot]')" in jobs["render"]["if"],
+      "the render job skips the docs bot's own push")
+check("DOCS_BOT_KEY" not in yaml.safe_dump(jobs["render"]),
+      "the render job, which runs the module's code, never sees the key")

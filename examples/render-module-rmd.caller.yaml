@@ -27,3 +27,8 @@ jobs:
     uses: PredictiveEcology/actions/.github/workflows/render-module-rmd.yaml@main
     with:
       module: <module>
+    ## Only if a ruleset requires pull requests on a branch this pushes to: the
+    ## docs-bot app can bypass a ruleset, GitHub Actions cannot. The org secret must
+    ## grant this repository access.
+    ## secrets:
+    ##   DOCS_BOT_KEY: ${{ secrets.DOCS_BOT_KEY }}
