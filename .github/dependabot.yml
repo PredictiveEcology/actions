@@ -6,6 +6,11 @@
 # opens a pull request only when a major moves -- checkout v7 to v8 -- which
 # is the case that needs a human to read a changelog anyway.
 #
+# One exception: `actions/create-github-app-token` in render-module-rmd.yaml is
+# pinned to a commit SHA, because it is handed the docs-bot app's private key.
+# Dependabot updates SHA pins on every release, so expect a pull request for it
+# on each minor or patch release as well.
+#
 # Nothing here affects how callers reference this repository. A `uses:` pinned
 # to a branch is not a version, so Dependabot's parser drops it before any
 # rule applies: `PredictiveEcology/actions/...@main` is never seen as a
