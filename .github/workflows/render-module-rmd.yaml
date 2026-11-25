@@ -17,6 +17,14 @@
 ## `extra-files`: newModule() writes the caller, so no caller could list them, and
 ## their names change with the module's events. The branch keeps exactly the ones
 ## the render wrote, so the figure of an event the module no longer has is removed.
+##
+## Docs bot (optional secret DOCS_BOT_KEY). By default the commit job pushes with
+## GITHUB_TOKEN, as github-actions[bot]. A repository ruleset cannot list the GitHub
+## Actions app as a bypass actor, so on a branch whose ruleset requires a pull request
+## that push is rejected. Given the private key of PredictiveEcology's docs-bot GitHub
+## App, the job pushes as that app instead, and the ruleset can let the app bypass it.
+## A push by the app also starts workflows, which a GITHUB_TOKEN push never does, so an
+## open pull request whose head this commit moves gets its required checks.
 
 name: render-module-rmd
 
@@ -83,6 +91,14 @@ on:
         required: false
         type: string
         default: ""
+    secrets:
+      DOCS_BOT_KEY:
+        description: >-
+          Private key (.pem contents) of PredictiveEcology's docs-bot GitHub App.
+          Optional -- without it the commit is pushed with GITHUB_TOKEN, as before.
+          Only the commit job reads it, never the render job that runs the module's
+          code. See "Docs bot" above.
+        required: false
 
 ## Inside a called workflow `github.workflow` resolves to the CALLER's workflow
 ## name, so without the `-reusable` suffix this key collides with the identical
@@ -129,7 +145,12 @@ jobs:
   render:
     needs: depends-on-gate
     ## A skipped gate (the default) lets the job run exactly as before.
-    if: ${{ !cancelled() && needs.depends-on-gate.result != 'failure' && (needs.depends-on-gate.result == 'skipped' || needs.depends-on-gate.outputs.ready == 'true') }}
+    ## Not on the docs bot's own push: it commits only the rendered files, never the
+    ## .Rmd, and the .md records the commit it was rendered from, so a render of the
+    ## bot's commit always differs from it. A caller whose push trigger has no `paths:`
+    ## filter would otherwise render and commit again on every bot commit, forever.
+    ## (A GITHUB_TOKEN push starts no workflow, so this never arose before.)
+    if: ${{ !cancelled() && needs.depends-on-gate.result != 'failure' && (needs.depends-on-gate.result == 'skipped' || needs.depends-on-gate.outputs.ready == 'true') && !(github.event_name == 'push' && github.actor == 'predictiveecology-docs-bot[bot]') }}
     name: Render module Rmd
     runs-on: ubuntu-latest
     ## Without a cap a hung dependency install runs to GitHub's 6 h default and holds this
@@ -295,6 +316,9 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    ## A step's `if:` cannot read `secrets`; this flag carries only whether one was passed.
+    env:
+      HAS_DOCS_BOT_KEY: ${{ secrets.DOCS_BOT_KEY != '' }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -308,17 +332,36 @@ jobs:
           name: module-md-${{ inputs.module }}
           path: ${{ runner.temp }}/render
 
+      ## Opt-in: see "Docs bot" above. A one-hour installation token for this repository
+      ## alone, limited to contents: write, and revoked when the job ends.
+      - id: docs-bot
+        if: ${{ env.HAS_DOCS_BOT_KEY == 'true' }}
+        uses: actions/create-github-app-token@v3
+        with:
+          ## The app's Client ID, which is not a secret.
+          client-id: Iv23lia2DjwXE9dAmcY0
+          private-key: ${{ secrets.DOCS_BOT_KEY }}
+          permission-contents: write
+
       - name: Commit results
         shell: bash
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ steps.docs-bot.outputs.token || secrets.GITHUB_TOKEN }}
+          BOT_SLUG: ${{ steps.docs-bot.outputs.app-slug }}
           MODULE: ${{ inputs.module }}
           MODULE_DIR: ${{ inputs.module-dir }}
           EXTRA_FILES: ${{ inputs.extra-files }}
         run: |
           set -euo pipefail
-          git config --local user.name "github-actions[bot]"
-          git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if [ -n "${BOT_SLUG}" ]; then
+            ## The app's bot account, so GitHub shows the commit as the app's.
+            bot_id=$(gh api "/users/${BOT_SLUG}[bot]" --jq .id)
+            git config --local user.name "${BOT_SLUG}[bot]"
+            git config --local user.email "${bot_id}+${BOT_SLUG}[bot]@users.noreply.github.com"
+          else
+            git config --local user.name "github-actions[bot]"
+            git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          fi
           d="${MODULE_DIR:-.}"
           src="${RUNNER_TEMP}/render"
           read -r -a extra <<< "${EXTRA_FILES}"
