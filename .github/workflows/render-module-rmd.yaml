@@ -297,7 +297,7 @@ jobs:
             cp "$f" "${out}/figures/"
           done
 
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v7
         with:
           name: module-md-${{ inputs.module }}
           path: ${{ runner.temp }}/rendered
