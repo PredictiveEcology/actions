@@ -334,9 +334,12 @@ jobs:
 
       ## Opt-in: see "Docs bot" above. A one-hour installation token for this repository
       ## alone, limited to contents: write, and revoked when the job ends.
+      ## Pinned to a commit, unlike this repository's other third-party actions, because
+      ## this one is handed the app's private key: a moved tag cannot reach it. Dependabot
+      ## updates the SHA and the version comment together.
       - id: docs-bot
         if: ${{ env.HAS_DOCS_BOT_KEY == 'true' }}
-        uses: actions/create-github-app-token@v3
+        uses: actions/create-github-app-token@f418cff399f7aef4c2f0ad47e25ca7a6abbdd6fc # v3.4.0
         with:
           ## The app's Client ID, which is not a secret.
           client-id: Iv23lia2DjwXE9dAmcY0

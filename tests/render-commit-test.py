@@ -420,6 +420,9 @@ check(bot is not None and bot.get("id") == "docs-bot"
       == "${{secrets.DOCS_BOT_KEY!=''}}"
       and bot["with"]["private-key"].replace(" ", "") == "${{secrets.DOCS_BOT_KEY}}",
       "the token step runs only when DOCS_BOT_KEY was passed")
+check(len(bot["uses"].split("@", 1)[1]) == 40
+      and all(c in "0123456789abcdef" for c in bot["uses"].split("@", 1)[1]),
+      "the action handed the key is pinned to a commit SHA, not a movable tag")
 check(step["env"]["GH_TOKEN"].replace(" ", "")
       == "${{steps.docs-bot.outputs.token||secrets.GITHUB_TOKEN}}"
       and step["env"]["BOT_SLUG"].replace(" ", "") == "${{steps.docs-bot.outputs.app-slug}}",
