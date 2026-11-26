@@ -6,6 +6,10 @@
 ##
 ## A workflow of its own rather than a job in self-test.yaml, so this check runs only when the
 ## render workflow or its test changes.
+##
+## Also weekly: callers install the newest bookdown on every render, and the step relies on
+## bookdown internals (its `bookdown.output.markdown` option, the form of its cross-reference
+## links), so a bookdown release can change its output with nothing changed here.
 
 name: self-test-render-citations
 
@@ -16,7 +20,13 @@ on:
       - ".github/workflows/render-module-rmd.yaml"
       - ".github/workflows/self-test-render-citations.yaml"
       - "tests/render-citations-test.R"
+  schedule:
+    - cron: "23 7 * * 1"
   workflow_dispatch:
+
+concurrency:
+  group: self-test-render-citations-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
