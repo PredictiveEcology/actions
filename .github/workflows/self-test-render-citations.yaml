@@ -1,0 +1,38 @@
+## Self-test for render-module-rmd's citation step ("Resolve citations in the .md").
+##
+## The step runs as written on fixture modules: the .md of a module without a top-level
+## `bibliography` is left byte for byte, and one with gets its citations and cross-references
+## resolved. It runs pandoc, so it also checks the output of the runner's pandoc.
+##
+## A workflow of its own rather than a job in self-test.yaml, so this check runs only when the
+## render workflow or its test changes.
+
+name: self-test-render-citations
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/render-module-rmd.yaml"
+      - ".github/workflows/self-test-render-citations.yaml"
+      - "tests/render-citations-test.R"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  render-citations:
+    name: render-module-rmd citation step
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: r-lib/actions/setup-pandoc@v2
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          use-public-rspm: true
+      - run: Rscript -e 'install.packages(c("bookdown", "rmarkdown", "yaml"))'
+        shell: bash
+      - run: Rscript tests/render-citations-test.R
+        shell: bash
