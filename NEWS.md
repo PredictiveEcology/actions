@@ -9,11 +9,15 @@
   markdown: citations and the reference list, figure and table numbers, and text references
   are filled in. The chunks do not run again (the input is the knitted `.md`), so the step
   adds a few seconds. Line breaks, front matter and raw HTML (kable tables, figure blocks)
-  are kept as written; a citation inside raw HTML stays as typed. If the conversion fails,
-  the `.md` is committed as rendered, with a warning. The `.md` of any other module is
-  byte for byte as before, including one whose `bibliography` sits under another key
-  (`editor_options:` in older module templates), which pandoc does not read either.
-  Callers need no change.
+  are kept as written, apart from bookdown's numbers and text references and, in an
+  `<img>` tag's alt text, a cross-reference cut to its number; a citation inside raw HTML
+  stays as typed. If the conversion fails, or its result shows other images than the
+  `.md`, an `<img>` tag as text, or more unresolved references, the `.md` is committed as
+  rendered, with a warning. The `.md` of any other module is byte for byte as before,
+  including one whose `bibliography` sits under another key (`editor_options:` in older
+  module templates), which pandoc does not read either. Callers need no change. The new
+  `self-test-render-citations.yaml` runs the step on fixture modules, on pull requests and
+  weekly, to catch a bookdown release that changes what the step relies on.
 
 - **`render-module-rmd.yaml` commits a module's event-flow figures with the `.md`.**
   SpaDES.core's module template (3.2.1.9068 and later) draws the module's events, and the

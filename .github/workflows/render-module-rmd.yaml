@@ -26,11 +26,14 @@
 ## bookdown::markdown_document2() (GitHub-flavoured, line breaks and front matter kept):
 ## citations and the reference list, figure and table numbers, and text references are
 ## filled in. The chunks do not run again: the input is the knitted .md. Raw HTML in it
-## (kable tables, knitr's figure blocks) is kept as written, so a citation inside one
-## stays as typed. If the conversion fails, the .md is committed as rendered, with a
-## warning. Any other module's .md is exactly as before, including one whose
-## `bibliography` sits under another key (`editor_options:` in older module templates),
-## which pandoc does not read either.
+## (kable tables, knitr's figure blocks) is kept as written, apart from bookdown's numbers
+## and text references and, in an <img> tag's alt text, a cross-reference cut to its
+## number; a citation inside raw HTML stays as typed. If the conversion fails, or its
+## result shows other images than the .md, an <img> tag as text, or more unresolved
+## references, the .md is committed as rendered, with a warning. Any other module's .md
+## is exactly as before, including one whose `bibliography` sits under another key
+## (`editor_options:` in older module templates), which pandoc does not read either.
+## self-test-render-citations.yaml runs the step on fixture modules.
 ##
 ## Docs bot (optional secret DOCS_BOT_KEY). By default the commit job pushes with
 ## GITHUB_TOKEN, as github-actions[bot]. A repository ruleset cannot list the GitHub
@@ -296,6 +299,7 @@ jobs:
           ## The input is a copy, as bookdown rewrites its input; `kept` restores the .md on
           ## an error, so the .md is then committed as rendered rather than not at all.
           kept <- readBin(out, "raw", file.size(out))
+          before <- xfun::read_utf8(out)
           knitted <- file.path(d, paste0(m, ".knitted.md"))
           file.copy(out, knitted, overwrite = TRUE)
           tryCatch({
@@ -309,14 +313,17 @@ jobs:
             ## markdown, which GitHub shows literally there. bookdown's own pass still reads
             ## into it, to number the captions.
             fmt$pandoc$from <- paste0(fmt$pandoc$from, "-markdown_in_html_blocks")
-            ## bookdown makes each \@ref() a link, also in the copy of a figure caption that
-            ## knitr puts in the <img> tag's alt text, where its quotes break the tag.
+            ## bookdown makes each \@ref() a link (`<a href="#x"><strong>??</strong></a>` if
+            ## unresolved), also in the copy of a figure caption that knitr puts in the
+            ## <img> tag's alt text, where its quotes break the tag; keep only the number.
             pre <- fmt$pre_processor
             fmt$pre_processor <- function(metadata, input_file, ...) {
               r <- pre(metadata, input_file, ...)
               x <- xfun::read_utf8(input_file)
-              i <- grep("^<img ", x)
-              x[i] <- gsub('<a href="#[^"]*">([^<]*)</a>', "\\1", x[i])
+              g <- gregexpr("<img\\b.*?/>", x, perl = TRUE)
+              regmatches(x, g) <- lapply(regmatches(x, g), gsub, perl = TRUE,
+                                         pattern = '<a href="#[^"]*">|</a>|</?strong>',
+                                         replacement = "")
               xfun::write_utf8(x, input_file)
               r
             }
@@ -325,10 +332,33 @@ jobs:
             ## A .md is not knitted, so the module's chunks do not run again.
             rmarkdown::render(knitted, output_format = fmt, output_file = basename(out),
                               encoding = "UTF-8")
+            ## A broken tag is escaped to text without an error, and its figure is gone from
+            ## the README. So the result must show the same images as before, no tag as text,
+            ## and no more unresolved references; if not, the .md is kept as rendered.
+            after <- xfun::read_utf8(out)
+            n <- function(x, p) sum(lengths(regmatches(x, gregexpr(p, x, perl = TRUE))))
+            img <- function(x) {
+              p <- c('<img\\b[^>]*?\\ssrc="([^"]+)"', "!\\[[^]]*\\]\\(<?([^)>\\s]+)")
+              s <- lapply(p, function(p) {
+                sub(p, "\\1", unlist(regmatches(x, gregexpr(p, x, perl = TRUE))), perl = TRUE)
+              })
+              sort(unique(gsub("&amp;", "&", unlist(s), fixed = TRUE)))
+            }
+            if (!identical(img(after), img(before))) stop("the images it shows would change")
+            p <- c("an <img> tag shown as text" = "\\\\<img|&lt;img",
+                   "unresolved text references" = "\\(ref:",
+                   "unresolved cross-references" = "\\\\@ref\\(")
+            for (i in seq_along(p)) {
+              if (n(after, p[[i]]) > n(before, p[[i]])) stop("it would add ", names(p)[i])
+            }
           }, error = function(e) {
             writeBin(kept, out)
+            ## Workflow-command escaping: `%` first, then line breaks.
+            msg <- gsub("\r", "%0D", gsub("\n", "%0A", gsub("%", "%25", conditionMessage(e),
+                                                             fixed = TRUE), fixed = TRUE),
+                        fixed = TRUE)
             cat("::warning::Could not resolve the citations in ", m, ".md, committed as ",
-                "rendered: ", gsub("[\r\n]+", " ", conditionMessage(e)), "\n", sep = "")
+                "rendered: ", msg, "\n", sep = "")
           })
           unlink(knitted)
 
