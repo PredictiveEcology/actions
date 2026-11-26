@@ -1,5 +1,20 @@
 # PredictiveEcology/actions (development)
 
+- **`render-module-rmd.yaml` resolves the citations in the `.md` of a module with a bibliography.**
+  The `.md` that `keep_md: yes` leaves is the knitted markdown, written before pandoc's
+  citeproc and bookdown's cross-reference pass, so a module's README showed `[@key]`,
+  `\@ref(label)` and `(ref:label)` as typed, and an empty References section. When the
+  `.Rmd`'s front matter names a top-level `bibliography` and keeps the `.md`, a new step
+  converts that `.md` once more with `bookdown::markdown_document2()` to GitHub-flavoured
+  markdown: citations and the reference list, figure and table numbers, and text references
+  are filled in. The chunks do not run again (the input is the knitted `.md`), so the step
+  adds a few seconds. Line breaks, front matter and raw HTML (kable tables, figure blocks)
+  are kept as written; a citation inside raw HTML stays as typed. If the conversion fails,
+  the `.md` is committed as rendered, with a warning. The `.md` of any other module is
+  byte for byte as before, including one whose `bibliography` sits under another key
+  (`editor_options:` in older module templates), which pandoc does not read either.
+  Callers need no change.
+
 - **`render-module-rmd.yaml` commits a module's event-flow figures with the `.md`.**
   SpaDES.core's module template (3.2.1.9068 and later) draws the module's events, and the
   objects each event reads and writes, at knit time, as `figures/<module>_eventFlow.png` and

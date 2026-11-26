@@ -18,6 +18,20 @@
 ## their names change with the module's events. The branch keeps exactly the ones
 ## the render wrote, so the figure of an event the module no longer has is removed.
 ##
+## Citations. The .md that `keep_md: yes` leaves is the knitted markdown, written before
+## pandoc's citeproc and bookdown's cross-reference pass, so it shows `[@key]`,
+## `\@ref(label)` and `(ref:label)` as typed, and its References section is empty. When
+## the .Rmd's front matter names a top-level `bibliography` and keeps the .md, the step
+## "Resolve citations in the .md" converts that .md once more, with citeproc and
+## bookdown::markdown_document2() (GitHub-flavoured, line breaks and front matter kept):
+## citations and the reference list, figure and table numbers, and text references are
+## filled in. The chunks do not run again: the input is the knitted .md. Raw HTML in it
+## (kable tables, knitr's figure blocks) is kept as written, so a citation inside one
+## stays as typed. If the conversion fails, the .md is committed as rendered, with a
+## warning. Any other module's .md is exactly as before, including one whose
+## `bibliography` sits under another key (`editor_options:` in older module templates),
+## which pandoc does not read either.
+##
 ## Docs bot (optional secret DOCS_BOT_KEY). By default the commit job pushes with
 ## GITHUB_TOKEN, as github-actions[bot]. A repository ruleset cannot list the GitHub
 ## Actions app as a bypass actor, so on a branch whose ruleset requires a pull request
@@ -260,6 +274,63 @@ jobs:
           md <- Sys.getenv("MODULE_DIR"); mp <- if (nzchar(md)) dirname(md) else ".."
           rmarkdown::render(file.path(if (nzchar(md)) md else ".", paste0(m, ".Rmd")),
                             encoding = "UTF-8")
+
+      ## See "Citations" above. Does nothing unless the .Rmd's front matter names a
+      ## top-level `bibliography` and keeps the .md.
+      - name: Resolve citations in the .md
+        shell: Rscript {0}
+        env:
+          MODULE: ${{ inputs.module }}
+          MODULE_DIR: ${{ inputs.module-dir }}
+        run: |
+          m <- Sys.getenv("MODULE")
+          d <- Sys.getenv("MODULE_DIR"); if (!nzchar(d)) d <- "."
+          rmd <- file.path(d, paste0(m, ".Rmd")); out <- file.path(d, paste0(m, ".md"))
+          ## `[[` matches the name exactly; `$` would also take e.g. `bibliography-x`.
+          if (is.null(rmarkdown::yaml_front_matter(rmd)[["bibliography"]]) ||
+              !isTRUE(rmarkdown::default_output_format(rmd)$options$keep_md) ||
+              !file.exists(out)) {
+            cat("No top-level bibliography, or no kept .md: the .md is left as rendered.\n")
+            quit(save = "no")
+          }
+          ## The input is a copy, as bookdown rewrites its input; `kept` restores the .md on
+          ## an error, so the .md is then committed as rendered rather than not at all.
+          kept <- readBin(out, "raw", file.size(out))
+          knitted <- file.path(d, paste0(m, ".knitted.md"))
+          file.copy(out, knitted, overwrite = TRUE)
+          tryCatch({
+            ## -smart, -autolink_bare_uris: quotes, and `owner/repo@ref` (read as an email
+            ## address), stay as typed.
+            fmt <- bookdown::markdown_document2(
+              base_format = rmarkdown::md_document, variant = "gfm", preserve_yaml = TRUE,
+              number_sections = FALSE, md_extensions = "-smart-autolink_bare_uris",
+              pandoc_args = "--wrap=preserve")
+            ## Raw HTML as written: pandoc would write the inside of a block back as
+            ## markdown, which GitHub shows literally there. bookdown's own pass still reads
+            ## into it, to number the captions.
+            fmt$pandoc$from <- paste0(fmt$pandoc$from, "-markdown_in_html_blocks")
+            ## bookdown makes each \@ref() a link, also in the copy of a figure caption that
+            ## knitr puts in the <img> tag's alt text, where its quotes break the tag.
+            pre <- fmt$pre_processor
+            fmt$pre_processor <- function(metadata, input_file, ...) {
+              r <- pre(metadata, input_file, ...)
+              x <- xfun::read_utf8(input_file)
+              i <- grep("^<img ", x)
+              x[i] <- gsub('<a href="#[^"]*">([^<]*)</a>', "\\1", x[i])
+              xfun::write_utf8(x, input_file)
+              r
+            }
+            ## Text references as HTML, which works inside raw HTML too.
+            options(bookdown.output.markdown = TRUE)
+            ## A .md is not knitted, so the module's chunks do not run again.
+            rmarkdown::render(knitted, output_format = fmt, output_file = basename(out),
+                              encoding = "UTF-8")
+          }, error = function(e) {
+            writeBin(kept, out)
+            cat("::warning::Could not resolve the citations in ", m, ".md, committed as ",
+                "rendered: ", gsub("[\r\n]+", " ", conditionMessage(e)), "\n", sep = "")
+          })
+          unlink(knitted)
 
       ## The .md, and the `extra-files`, into one folder for the commit job, at their
       ## paths relative to the module folder. A module .Rmd that sets `keep_md: yes`
