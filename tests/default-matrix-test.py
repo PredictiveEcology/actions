@@ -59,6 +59,14 @@ cfg = job["strategy"]["matrix"]["config"]
 literal = re.search(r"\|\| '(\[.*\])'", cfg).group(1)
 legs = [(d["os"], d["nosuggests"], d["r"]) for d in json.loads(literal)]
 check(legs == TODAY, "default matrix legs equal today's")
+# The Postgres service starts only when asked for, and only on one leg; an empty image means not started.
+pg = inputs["postgres"]
+check(pg["type"] == "boolean" and pg["default"] is False, "postgres is opt-in")
+img = job["services"]["postgres"]["image"]
+LEG = "inputs.postgres && matrix.config.os == 'ubuntu-latest' && matrix.config.r == 'release' && !matrix.config.nosuggests"
+check(img == "${{ (" + LEG + ") && 'postgres:16' || '' }}", "the postgres service is gated on the input and one leg")
+pgStep = [s for s in job["steps"] if s.get("name") == "Point the tests at the Postgres service"]
+check(len(pgStep) == 1 and pgStep[0]["if"] == LEG, "the PG* env is set on the same leg only")
 check(job["strategy"]["matrix"]["include"].endswith("inputs.extra-config) }}"),
       "extra-config is still appended when no reduced matrix is in use")
 

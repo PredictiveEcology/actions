@@ -94,6 +94,15 @@ on:
         type: string
         default: 'c("--no-manual", "--compact-vignettes=gs+qpdf")'
 
+      postgres:
+        description: >-
+          Opt in. Start a Postgres 16 server beside the ubuntu-latest (release)
+          leg only, and set PGHOST, PGPORT, PGUSER, PGPASSWORD and PGDATABASE for
+          it, plus POSTGRES_TEST_SERVER=true so a package's tests can gate on it
+          (e.g. reproducible runs its cache tests against it). No other leg
+          changes. Default false: no server anywhere.
+        type: boolean
+        default: false
       extra-env:
         description: >-
           Extra environment variables for the whole job, as newline-separated
@@ -239,8 +248,34 @@ jobs:
       R_VERSION_LABEL: ${{ matrix.config.r }}
       R_REMOTES_NO_ERRORS_FROM_WARNINGS: true
 
+    # See the postgres input. An empty image means the service is not started, so every
+    # other leg (and every leg when postgres is false) runs exactly as before; service
+    # containers exist only on Linux runners anyway.
+    services:
+      postgres:
+        image: ${{ (inputs.postgres && matrix.config.os == 'ubuntu-latest' && matrix.config.r == 'release' && !matrix.config.nosuggests) && 'postgres:16' || '' }}
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+
     steps:
       - uses: actions/checkout@v7
+
+      - name: Point the tests at the Postgres service
+        if: inputs.postgres && matrix.config.os == 'ubuntu-latest' && matrix.config.r == 'release' && !matrix.config.nosuggests
+        shell: bash
+        run: |
+          {
+            echo "PGHOST=localhost"
+            echo "PGPORT=5432"
+            echo "PGUSER=postgres"
+            echo "PGPASSWORD=postgres"
+            echo "PGDATABASE=postgres"
+            echo "POSTGRES_TEST_SERVER=true"
+          } >> "$GITHUB_ENV"
 
       # Applied before setup-r-deps so it reaches dependency resolution too,
       # not just the check. See the extra-env input for why this exists.
